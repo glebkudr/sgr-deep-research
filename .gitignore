@@ -11,6 +11,9 @@ config.yaml.bak
 config.yaml.backup
 *.key
 *.secret
+/workspace/
+/indexes/
+/frontend/node_modules/
 
 # PYTHON
 __pycache__/

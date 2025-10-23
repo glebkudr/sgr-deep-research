@@ -1,19 +1,30 @@
-all: clean format sdist
-	ls -lah dist
+SHELL := /bin/bash
+COMPOSE ?= docker compose
+COMPOSE_FILE ?= docker-compose.yml
+ENV_FILE ?= .env
 
-wheel:
-	pipx run build --wheel .
+.PHONY: up down stop logs ps build seed-neo4j-constraints env-copy
 
-whl_file = $(shell ls dist/*.whl)
+up:
+	$(COMPOSE) -f $(COMPOSE_FILE) up -d neo4j redis
 
-install: clean wheel
-	pip3 install $(whl_file) --user
+down:
+	$(COMPOSE) -f $(COMPOSE_FILE) down
 
-format:
-	pre-commit run --all-files
+stop:
+	$(COMPOSE) -f $(COMPOSE_FILE) stop
 
-clean:
-	rm -rf build
-	rm -rf *.egg-info
-	rm -rf dist
-	pip3 uninstall sgr-deep-research UNKNOWN -y
+logs:
+	$(COMPOSE) -f $(COMPOSE_FILE) logs -f neo4j redis
+
+ps:
+	$(COMPOSE) -f $(COMPOSE_FILE) ps
+
+build:
+	$(COMPOSE) -f $(COMPOSE_FILE) build
+
+seed-neo4j-constraints:
+	python services/indexer/migrations/run_constraints.py
+
+env-copy:
+	@if [ ! -f $(ENV_FILE) ]; then cp .env.example $(ENV_FILE); fi
