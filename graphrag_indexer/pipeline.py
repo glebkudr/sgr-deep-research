@@ -18,6 +18,7 @@ from .extractors import extract_document
 from .graph_writer import Neo4jGraphWriter
 from .loader import load_documents
 from .models import Chunk, GraphEdge, GraphNode, NodeKey, TextUnit
+from .schema_validator import SchemaValidationError, SchemaValidator
 
 
 logger = logging.getLogger(__name__)
@@ -27,6 +28,7 @@ class IndexingPipeline:
     def __init__(self, job_store: JobStore | None = None) -> None:
         self.job_store = job_store or JobStore()
         self.settings = get_settings()
+        self.schema_validator = SchemaValidator.from_config()
 
     def run(self, job: IndexJob) -> None:
         logger.info("Starting indexing job %s for collection %s", job.job_id, job.collection)
@@ -48,9 +50,13 @@ class IndexingPipeline:
             for doc in documents:
                 try:
                     extraction = extract_document(doc)
+                    self.schema_validator.validate(extraction, source=doc.rel_path)
                     self._merge_nodes(nodes_by_key, extraction.nodes)
                     self._merge_edges(edges_keyed, extraction.edges)
                     text_units.extend(extraction.text_units)
+                except SchemaValidationError as exc:
+                    logger.error("Schema validation failed for %s: %s", doc.rel_path, exc)
+                    raise
                 except Exception as exc:  # pylint: disable=broad-except
                     logger.exception("Failed to process %s: %s", doc.rel_path, exc)
                     job_state.errors.append(JobError(message=str(exc), path=doc.rel_path))
