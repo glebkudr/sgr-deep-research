@@ -96,11 +96,13 @@ services:
       args:
         NEXT_PUBLIC_API_URL: "http://localhost:8000"
         NEXT_PUBLIC_JWT: "${NEXT_PUBLIC_JWT:-}"
+        NEXT_PUBLIC_GRAPH_VIEWER_URL: "${NEXT_PUBLIC_GRAPH_VIEWER_URL}"
     env_file:
       - .env
     environment:
       NEXT_PUBLIC_API_URL: "http://localhost:8000"
       NEXT_PUBLIC_JWT: "${NEXT_PUBLIC_JWT:-}"
+      NEXT_PUBLIC_GRAPH_VIEWER_URL: "${NEXT_PUBLIC_GRAPH_VIEWER_URL}"
     ports:
       - "${FRONTEND_PORT:-3000}:3000"
     depends_on:
