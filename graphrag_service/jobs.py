@@ -20,6 +20,7 @@ class JobStatus(str, Enum):
 
 @dataclass
 class JobStats:
+    total_files: int = 0
     processed_files: int = 0
     nodes: int = 0
     edges: int = 0
