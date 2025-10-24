@@ -32,3 +32,4 @@ Tasks
 Acceptance
 - Typical questions like "кто вызывает Y" or "где пишется регистр X" respond ≤ 4s p95 with ≥ 1–2 valid citations.
 
+

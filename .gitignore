@@ -14,6 +14,7 @@ config.yaml.backup
 /workspace/
 /indexes/
 /frontend/node_modules/
+/temp/
 
 # PYTHON
 __pycache__/

@@ -1,0 +1,48 @@
+version_: 2
+template_: SimpleKGPipeline
+
+neo4j_config:
+  uri: neo4j://localhost:7687
+  user: neo4j
+  password: change-me
+  database: neo4j
+
+llm_config:
+  provider: openai
+  model: gpt-4o-mini
+  params:
+    temperature: 0
+    response_format:
+      type: json_object
+
+embedder_config:
+  provider: openai
+  model: text-embedding-3-large
+
+from_pdf: false
+perform_entity_resolution: true
+
+schema:
+  ${file}: ./schema_1c_v2.json
+
+prompt_template: |
+  You extract ONLY entities/relations permitted by the schema.
+  Normalize all owners to `Object.qualified_name` (e.g., "Документ.Счет").
+  Prefer GUIDs when present. Use patterns and directions exactly as declared.
+  Map 1C concepts:
+  - Attributes/TabularParts/Resources/Dimensions => USES_TYPE / REFERENCES to Object/Enum.
+  - Document posting: Module/Document MAKES_MOVEMENTS_IN AccumulationRegister.
+  - Journals: Object JOURNALED_IN DocumentJournal.
+  - Forms: Object HAS_FORM Form; default => DEFAULT_FORM.
+  - UI: Form HAS_CONTROL FormControl; FormControl BINDS Binding; Binding BINDS_TO_COMMAND Command; Command COMMAND_OF Object.
+  - Layouts: Object HAS_LAYOUT Layout; Layout LAYOUT_OF Object.
+  - Access: Role GRANTS AccessRight; Role ROLE_HAS_ACCESS_TO Object; AccessRight PERMITS Object (put condition text if any).
+  - HTTP: Configuration HAS_HTTP_SERVICE HTTPService; HTTPService HAS_URL_TEMPLATE URLTemplate; URLTemplate HAS_URL_METHOD HTTPMethod.
+  - Events: EventSubscription HAS_EVENT_SOURCE EventSource; EventSubscription SUBSCRIBES_TO Routine or Object.
+  - Code: Module HAS_ROUTINE Routine; Routine CALLS Routine; Module OWNED_BY Object.
+  Emit compact JSON; omit fields not in the schema.
+
+schema_filters:
+  additional_node_types: false
+  additional_relationship_types: false
+  additional_properties_allowed: false

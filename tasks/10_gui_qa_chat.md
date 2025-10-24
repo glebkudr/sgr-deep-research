@@ -34,3 +34,4 @@ Acceptance
 - Typical queries render answer ≤4s p95 with ≥1–2 valid citations.
 - Citations are clickable and reveal snippets/paths.
 
+

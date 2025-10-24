@@ -32,3 +32,4 @@ Acceptance
 - `npm run dev` starts the app; `/upload` and `/qa` render placeholders.
 - API base URL is read from `NEXT_PUBLIC_API_URL`.
 
+

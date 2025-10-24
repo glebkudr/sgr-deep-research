@@ -41,3 +41,4 @@ Acceptance
 - Upload triggers job creation; UI shows PENDING→RUNNING→DONE transitions.
 - Stats counters update; errors render clearly.
 
+

@@ -21,3 +21,4 @@ Tasks
 Acceptance
 - Index builds and loads quickly; top_k queries return stable results and include paths for citations.
 
+
