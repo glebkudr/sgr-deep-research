@@ -101,9 +101,19 @@ class IndexingPipeline:
             else:
                 logger.info("Generated %d chunks for job %s", len(chunks), job.job_id)
             job_state.stats.vector_chunks = len(chunks)
+            # Set phase to EMBEDDING and reset embedded counter to start deterministic progress
+            job_state.stats.phase = "EMBEDDING"
+            job_state.stats.embedded_chunks = 0
             self.job_store.save(job_state)
+            logger.info(
+                "Phase set to EMBEDDING for job %s (collection %s): vector_chunks=%d embedded_chunks=%d",
+                job.job_id,
+                job.collection,
+                job_state.stats.vector_chunks,
+                job_state.stats.embedded_chunks,
+            )
 
-            embeddings = self._compute_embeddings(chunks)
+            embeddings = self._compute_embeddings(job_state, chunks)
             if embeddings.size:
                 logger.info("Computed embeddings for %d chunks", embeddings.shape[0])
 
@@ -157,12 +167,27 @@ class IndexingPipeline:
                 raise TypeError(f"IndexingPipeline: GraphEdge.properties must be a dict, got {type(edge.properties)}")
             edge.properties["collection"] = collection
 
-    def _compute_embeddings(self, chunks: List[Chunk]) -> np.ndarray:
+    def _compute_embeddings(self, job_state: JobState, chunks: List[Chunk]) -> np.ndarray:
         if not chunks:
             return np.zeros((0, 0), dtype=np.float32)
         client = OpenAIEmbeddingClient()
         texts = [chunk.text for chunk in chunks]
-        return client.embed_texts(texts)
+        all_vectors: List[np.ndarray] = []
+        for batch_vectors in client.embed_texts_iter(texts):
+            all_vectors.append(batch_vectors)
+            batch_count = batch_vectors.shape[0]
+            job_state.stats.embedded_chunks += batch_count
+            self.job_store.save(job_state)
+            logger.info(
+                "Embedding progress for job %s (collection %s): embedded_chunks=%d vector_chunks=%d",
+                job_state.job_id,
+                job_state.collection,
+                job_state.stats.embedded_chunks,
+                job_state.stats.vector_chunks,
+            )
+        if not all_vectors:
+            return np.zeros((0, 0), dtype=np.float32)
+        return np.vstack(all_vectors).astype(np.float32)
 
     def _write_graph(
         self,

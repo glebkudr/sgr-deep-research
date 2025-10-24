@@ -24,12 +24,21 @@ class OpenAIEmbeddingClient:
 
     def embed_texts(self, texts: Sequence[str]) -> np.ndarray:
         embeddings: List[np.ndarray] = []
-        for batch_start in range(0, len(texts), self.batch_size):
-            batch = list(texts[batch_start : batch_start + self.batch_size])
-            embeddings.extend(self._embed_batch(batch))
+        for batch_vectors in self.embed_texts_iter(texts):
+            embeddings.append(batch_vectors)
         if not embeddings:
             return np.zeros((0, 0), dtype=np.float32)
         return np.vstack(embeddings).astype(np.float32)
+
+    def embed_texts_iter(self, texts: Sequence[str]) -> Iterable[np.ndarray]:
+        """Yield embeddings per batch as ndarrays with shape (batch_size, dim)."""
+        if not texts:
+            return
+        for batch_start in range(0, len(texts), self.batch_size):
+            batch = list(texts[batch_start : batch_start + self.batch_size])
+            vectors = self._embed_batch(batch)
+            if vectors:
+                yield np.vstack(vectors).astype(np.float32)
 
     def _embed_batch(self, batch: Sequence[str]) -> List[np.ndarray]:
         attempt = 0
