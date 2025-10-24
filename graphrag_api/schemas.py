@@ -18,11 +18,17 @@ class UploadResponse(BaseModel):
 
 
 class JobStatsSchema(BaseModel):
+    phase: str = Field(default="")
     total_files: int = Field(default=0)
     processed_files: int
     nodes: int
     edges: int
     vector_chunks: int
+    embedded_chunks: int = Field(default=0)
+    graph_nodes_total: int = Field(default=0)
+    graph_nodes_written: int = Field(default=0)
+    graph_edges_total: int = Field(default=0)
+    graph_edges_written: int = Field(default=0)
     duration_sec: float
 
 
@@ -49,11 +55,17 @@ class JobStateSchema(BaseModel):
             collection=state.collection,
             status=state.status.value,
             stats=JobStatsSchema(
+                phase=state.stats.phase,
                 total_files=state.stats.total_files,
                 processed_files=state.stats.processed_files,
                 nodes=state.stats.nodes,
                 edges=state.stats.edges,
                 vector_chunks=state.stats.vector_chunks,
+                embedded_chunks=state.stats.embedded_chunks,
+                graph_nodes_total=state.stats.graph_nodes_total,
+                graph_nodes_written=state.stats.graph_nodes_written,
+                graph_edges_total=state.stats.graph_edges_total,
+                graph_edges_written=state.stats.graph_edges_written,
                 duration_sec=state.stats.duration_sec,
             ),
             errors=[JobErrorSchema(message=err.message, path=err.path) for err in state.errors],

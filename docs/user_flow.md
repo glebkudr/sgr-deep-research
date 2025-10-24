@@ -36,16 +36,22 @@
 **Шаг 4. Наблюдать прогресс**
 
 * **Действие:** ничего не делает, страница сама поллит.
-* **GUI:** статус меняется `PENDING → RUNNING`; растут счётчики: `processed_files`, `vector_chunks`, `nodes`, `edges`; прогрессбар.
+* **GUI:** статус меняется `PENDING → RUNNING`. Отображаются прогресс-бары:
+  - Files processed: processed_files/total_files.
+  - Embeddings: embedded_chunks/vector_chunks (появляется после чанкинга, растёт по мере эмбеддингов).
+  - Graph nodes: graph_nodes_written/graph_nodes_total (при наличии totals; может «рывком» завершиться).
+  - Graph edges: graph_edges_written/graph_edges_total (аналогично).
+  - Спиннер «Идет индексирование…» показывается только если нет ни одного валидного знаменателя для прогресса текущей фазы.
 * **Подсистемы:** `front (poll GET /jobs/{job_id}) → graphrag-api (читает статус) ← redis (хранит прогресс)`, параллельно `graphrag-indexer` работает.
 * **Тех.детаиль (Worker пайплайн):**
 
   1. **Loaders**: рекурсивный обход `raw/`.
   2. **Extract 1C**: эвристики для BSL/метаданных (Routine, CALLS, READS_FROM/WRITES_TO, REFERENCES, HAS_*).
-  3. **Chunking**: ~800 токенов, overlap ~120.
-  4. **Embeddings**: OpenAI BYOK (батчирование, ретраи).
-  5. **Graph writer**: `MERGE` узлов/рёбер по онтологии в **Neo4j**.
-  6. **Vector index**: FAISS в `/app/indexes/<collection>/faiss` + маппинг `chunk_id ↔ node_id, path`.
+  3. **Chunking**: ~800 токенов, overlap ~120. Публикуется `vector_chunks`.
+  4. **Embeddings (фаза EMBEDDING)**: OpenAI BYOK, по-батчевый прогресс — увеличивается `embedded_chunks` и сохраняется в Redis после каждого батча.
+  5. **Graph writer (фаза GRAPH_WRITE)**: выставляются totals `graph_nodes_total/graph_edges_total`, при возможности инкрементируются `graph_*_written`, в минимальном варианте — при завершении записываются равными totals.
+  6. **Vector index (фаза VECTOR_INDEX → FINALIZING)**: FAISS в `/app/indexes/<collection>/faiss` + маппинг `chunk_id ↔ node_id, path`.
+  7. Фазы выставляются явно: `EMBEDDING → GRAPH_WRITE → VECTOR_INDEX → FINALIZING`.
 
 **Шаг 5. Завершение индексации**
 
@@ -64,7 +70,13 @@
 
 * В **Neo4j** есть узлы/связи доменной онтологии.
 * В **FAISS** — индекс коллекции + маппинг чанков.
-* Страница `/upload` показывает `DONE` и итоговую статистику.
+* Страница `/upload` показывает `DONE` и итоговую статистику. Во время индексации видны отдельные бары прогресса «Embeddings», «Graph nodes», «Graph edges» при наличии валидных знаменателей.
+* В логах `graphrag-indexer` есть структурированные INFO-сообщения с ключами `event=... job_id=... collection=...`, в том числе:
+  - `event=phase_set` при смене фаз (`EMBEDDING/GRAPH_WRITE/VECTOR_INDEX/FINALIZING`),
+  - `event=embedding_progress` с `embedded_chunks/vector_chunks`,
+  - `event=graph_write_completed` с `graph_*_written/graph_*_total`,
+  - `event=vector_index_updated`,
+  - `event=job_finished` с `duration_sec`.
 
 ---
 

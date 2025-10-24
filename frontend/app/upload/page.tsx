@@ -17,7 +17,13 @@ type JobStats = {
   nodes: number;
   edges: number;
   vector_chunks: number;
+  embedded_chunks?: number;
+  graph_nodes_total?: number;
+  graph_nodes_written?: number;
+  graph_edges_total?: number;
+  graph_edges_written?: number;
   duration_sec: number;
+  phase?: string;
 };
 
 type JobRecord = {
@@ -168,6 +174,63 @@ const allowed = useMemo(() => new Set(["bsl", "xml", "html", "htm", "txt"]), [])
     return Math.min(100, Math.round((job.stats.processed_files / job.stats.total_files) * 100));
   }, [job?.stats?.processed_files, job?.stats?.total_files, job]);
 
+  const embeddingsBar = useMemo(() => {
+    const stats = job?.stats;
+    if (!stats) return null;
+    const denom = typeof stats.vector_chunks === "number" ? stats.vector_chunks : 0;
+    const numer = typeof stats.embedded_chunks === "number" ? stats.embedded_chunks : undefined;
+    if (denom > 0 && typeof numer === "number") {
+      const percent = Math.floor((numer / denom) * 100);
+      return {
+        percent: Math.min(100, Math.max(0, percent)),
+        numer,
+        denom,
+      };
+    }
+    return null;
+  }, [job?.stats]);
+
+  const graphNodesBar = useMemo(() => {
+    const stats = job?.stats;
+    if (!stats) return null;
+    const denom = typeof stats.graph_nodes_total === "number" ? stats.graph_nodes_total : 0;
+    const numer = typeof stats.graph_nodes_written === "number" ? stats.graph_nodes_written : undefined;
+    if (denom > 0 && typeof numer === "number") {
+      const percent = Math.floor((numer / denom) * 100);
+      return {
+        percent: Math.min(100, Math.max(0, percent)),
+        numer,
+        denom,
+      };
+    }
+    return null;
+  }, [job?.stats]);
+
+  const graphEdgesBar = useMemo(() => {
+    const stats = job?.stats;
+    if (!stats) return null;
+    const denom = typeof stats.graph_edges_total === "number" ? stats.graph_edges_total : 0;
+    const numer = typeof stats.graph_edges_written === "number" ? stats.graph_edges_written : undefined;
+    if (denom > 0 && typeof numer === "number") {
+      const percent = Math.floor((numer / denom) * 100);
+      return {
+        percent: Math.min(100, Math.max(0, percent)),
+        numer,
+        denom,
+      };
+    }
+    return null;
+  }, [job?.stats]);
+
+  const showSpinner = useMemo(() => {
+    const hasFilesBar = progressValue !== null;
+    const hasEmbeddings = !!embeddingsBar;
+    const hasGraphNodes = !!graphNodesBar;
+    const hasGraphEdges = !!graphEdgesBar;
+    const hasAnyBar = hasFilesBar || hasEmbeddings || hasGraphNodes || hasGraphEdges;
+    return job && job.status === "RUNNING" && !hasAnyBar;
+  }, [job, progressValue, embeddingsBar, graphNodesBar, graphEdgesBar]);
+
   return (
     <div className="stack">
       {toast && <Toast message={toast.message} variant={toast.variant} onClose={() => setToast(null)} />}
@@ -227,6 +290,39 @@ const allowed = useMemo(() => new Set(["bsl", "xml", "html", "htm", "txt"]), [])
             </div>
           )}
 
+          {embeddingsBar && (
+            <div className="stack" data-testid="indexing-embeddings">
+              <ProgressBar value={embeddingsBar.percent} label="Embeddings" />
+              <div className="inline text-muted" data-testid="indexing-embeddings-count" style={{ gap: "0.25rem" }}>
+                <span>{embeddingsBar.numer}</span>
+                <span>/</span>
+                <span>{embeddingsBar.denom}</span>
+              </div>
+            </div>
+          )}
+
+          {graphNodesBar && (
+            <div className="stack" data-testid="indexing-graph-nodes">
+              <ProgressBar value={graphNodesBar.percent} label="Graph nodes" />
+              <div className="inline text-muted" data-testid="indexing-graph-nodes-count" style={{ gap: "0.25rem" }}>
+                <span>{graphNodesBar.numer}</span>
+                <span>/</span>
+                <span>{graphNodesBar.denom}</span>
+              </div>
+            </div>
+          )}
+
+          {graphEdgesBar && (
+            <div className="stack" data-testid="indexing-graph-edges">
+              <ProgressBar value={graphEdgesBar.percent} label="Graph edges" />
+              <div className="inline text-muted" data-testid="indexing-graph-edges-count" style={{ gap: "0.25rem" }}>
+                <span>{graphEdgesBar.numer}</span>
+                <span>/</span>
+                <span>{graphEdgesBar.denom}</span>
+              </div>
+            </div>
+          )}
+
           <div className="card-grid">
             <StatCard title="Файлы" value={job?.stats.processed_files ?? 0} />
             <StatCard title="Граф: узлы" value={job?.stats.nodes ?? 0} />
@@ -247,7 +343,7 @@ const allowed = useMemo(() => new Set(["bsl", "xml", "html", "htm", "txt"]), [])
                 ))}
               </ul>
             </div>
-          ) : job && job.status === "RUNNING" ? (
+          ) : showSpinner ? (
             <div className="inline" style={{ alignItems: "center" }}>
               <Spinner />
               <span>Идет индексирование…</span>
