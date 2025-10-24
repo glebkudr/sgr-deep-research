@@ -20,11 +20,17 @@ class JobStatus(str, Enum):
 
 @dataclass
 class JobStats:
+    phase: str = ""
     total_files: int = 0
     processed_files: int = 0
     nodes: int = 0
     edges: int = 0
     vector_chunks: int = 0
+    embedded_chunks: int = 0
+    graph_nodes_total: int = 0
+    graph_nodes_written: int = 0
+    graph_edges_total: int = 0
+    graph_edges_written: int = 0
     duration_sec: float = 0.0
 
 
