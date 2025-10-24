@@ -12,16 +12,6 @@ type GraphNode = { id: string; label: string; title?: string };
 type GraphLink = { source: string; target: string; type: string };
 type GraphData = { nodes: GraphNode[]; links: GraphLink[] };
 
-function colorForLabel(label: string): string {
-  const palette = [
-    '#8ac7ff', '#9affc7', '#ffb3ba', '#d7b3ff', '#ffd39a',
-    '#b3fff6', '#ffdfba', '#c9ff9a', '#ff9af2', '#b1b1ff'
-  ];
-  let h = 0;
-  for (let i = 0; i < label.length; i++) h = (h * 31 + label.charCodeAt(i)) >>> 0;
-  return palette[h % palette.length];
-}
-
 export default function GraphView(): JSX.Element {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const graphRef = useRef<any>(null);
@@ -90,16 +80,17 @@ export default function GraphView(): JSX.Element {
     }));
     fetch(url, { signal: controller.signal })
       .then(async (res) => {
-        if (!res.ok) {
-          let msg = `HTTP ${res.status}`;
-          try {
-            const j = await res.json();
-            if (j && typeof (j as any).error === 'string') msg = (j as any).error;
-          } catch {
-            // ignore parse error
-          }
+        let payload: any = null;
+        try {
+          payload = await res.json();
+        } catch {
+          // ignore parse error to allow fail-fast with HTTP status
         }
-        const j = await res.json();
+        if (!res.ok) {
+          const msg = payload && typeof payload.error === 'string' ? payload.error : `HTTP ${res.status}`;
+          throw new Error(msg);
+        }
+        const j = payload;
         const nodes: GraphNode[] = Array.isArray(j?.nodes) ? (j.nodes as GraphNode[]) : [];
         setPreloadNodes(nodes);
         setPreloadStatus('Ok');
@@ -131,6 +122,7 @@ export default function GraphView(): JSX.Element {
       .catch((e) => {
         if ((e as any)?.name === 'AbortError') return;
         setPreloadStatus('Error');
+        setPreloadNodes(null);
         console.error(JSON.stringify({
           ts: new Date().toISOString(),
           level: 'error',
