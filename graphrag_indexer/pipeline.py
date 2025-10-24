@@ -31,7 +31,7 @@ class IndexingPipeline:
         self.schema_validator = SchemaValidator.from_config()
 
     def run(self, job: IndexJob) -> None:
-        logger.info("Starting indexing job %s for collection %s", job.job_id, job.collection)
+        logger.info("event=indexing_start job_id=%s collection=%s", job.job_id, job.collection)
         job_state = self.job_store.get(job.job_id) or JobState(job_id=job.job_id, collection=job.collection)
         job_state.status = JobStatus.RUNNING
         job_state.started_at = datetime.utcnow()
@@ -43,19 +43,20 @@ class IndexingPipeline:
 
         try:
             documents = load_documents(Path(job.raw_path))
-            logger.info("Loaded %d documents from %s", len(documents), job.raw_path)
+            logger.info(
+                "event=load_documents_ok job_id=%s collection=%s documents=%d path=%s",
+                job.job_id,
+                job.collection,
+                len(documents),
+                job.raw_path,
+            )
             if job_state.stats.total_files == 0:
                 job_state.stats.total_files = len(documents)
                 self.job_store.save(job_state)
-                logger.info(
-                    "Initialized total_files after load for job %s (collection %s): total_files=%d",
-                    job.job_id,
-                    job.collection,
-                    job_state.stats.total_files,
-                )
+                logger.info("event=init_total_files job_id=%s collection=%s total_files=%d", job.job_id, job.collection, job_state.stats.total_files)
             elif job_state.stats.total_files != len(documents):
                 logger.warning(
-                    "Total files mismatch for job %s (collection %s): expected=%d actual=%d",
+                    "event=total_files_mismatch job_id=%s collection=%s expected=%d actual=%d",
                     job.job_id,
                     job.collection,
                     job_state.stats.total_files,
@@ -75,17 +76,29 @@ class IndexingPipeline:
                     self._merge_edges(edges_keyed, extraction.edges)
                     text_units.extend(extraction.text_units)
                 except SchemaValidationError as exc:
-                    logger.error("Schema validation failed for %s: %s", doc.rel_path, exc)
+                    logger.error(
+                        "event=schema_validation_failed job_id=%s collection=%s path=%s error=%s",
+                        job.job_id,
+                        job.collection,
+                        doc.rel_path,
+                        exc,
+                    )
                     raise
                 except Exception as exc:  # pylint: disable=broad-except
-                    logger.exception("Failed to process %s: %s", doc.rel_path, exc)
+                    logger.exception(
+                        "event=document_processing_failed job_id=%s collection=%s path=%s error=%s",
+                        job.job_id,
+                        job.collection,
+                        doc.rel_path,
+                        exc,
+                    )
                     job_state.errors.append(JobError(message=str(exc), path=doc.rel_path))
                 finally:
                     job_state.stats.processed_files += 1
                     self.job_store.save(job_state)
                     if job_state.stats.processed_files % 100 == 0:
                         logger.info(
-                            "Progress job %s (collection %s): processed_files=%d total_files=%d",
+                            "event=file_progress job_id=%s collection=%s processed_files=%d total_files=%d",
                             job.job_id,
                             job.collection,
                             job_state.stats.processed_files,
@@ -93,29 +106,35 @@ class IndexingPipeline:
                         )
 
             if job_state.errors:
-                logger.warning("Job %s completed with %d errors.", job.job_id, len(job_state.errors))
+                logger.warning("event=job_completed_with_errors job_id=%s collection=%s errors=%d", job.job_id, job.collection, len(job_state.errors))
 
             chunks = chunk_text_units(text_units)
             if not chunks:
-                logger.warning("No chunks generated for job %s.", job.job_id)
+                logger.warning("event=no_chunks job_id=%s collection=%s", job.job_id, job.collection)
             else:
-                logger.info("Generated %d chunks for job %s", len(chunks), job.job_id)
+                logger.info("event=chunks_generated job_id=%s collection=%s chunks=%d", job.job_id, job.collection, len(chunks))
             job_state.stats.vector_chunks = len(chunks)
             # Set phase to EMBEDDING and reset embedded counter to start deterministic progress
             job_state.stats.phase = "EMBEDDING"
             job_state.stats.embedded_chunks = 0
             self.job_store.save(job_state)
             logger.info(
-                "Phase set to EMBEDDING for job %s (collection %s): vector_chunks=%d embedded_chunks=%d",
+                "event=phase_set job_id=%s collection=%s phase=%s vector_chunks=%d embedded_chunks=%d",
                 job.job_id,
                 job.collection,
+                "EMBEDDING",
                 job_state.stats.vector_chunks,
                 job_state.stats.embedded_chunks,
             )
 
             embeddings = self._compute_embeddings(job_state, chunks)
             if embeddings.size:
-                logger.info("Computed embeddings for %d chunks", embeddings.shape[0])
+                logger.info(
+                    "event=embeddings_computed job_id=%s collection=%s embedded=%d",
+                    job.job_id,
+                    job.collection,
+                    embeddings.shape[0],
+                )
 
             # Prepare graph write phase with totals
             edges_list = list(edges_keyed.values())
@@ -126,9 +145,10 @@ class IndexingPipeline:
             job_state.stats.phase = "GRAPH_WRITE"
             self.job_store.save(job_state)
             logger.info(
-                "Phase set to GRAPH_WRITE for job %s (collection %s): graph_nodes_total=%d graph_edges_total=%d",
+                "event=phase_set job_id=%s collection=%s phase=%s graph_nodes_total=%d graph_edges_total=%d",
                 job.job_id,
                 job.collection,
+                "GRAPH_WRITE",
                 job_state.stats.graph_nodes_total,
                 job_state.stats.graph_edges_total,
             )
@@ -139,7 +159,7 @@ class IndexingPipeline:
             job_state.stats.graph_edges_written = job_state.stats.graph_edges_total
             self.job_store.save(job_state)
             logger.info(
-                "Graph write completed for job %s (collection %s): graph_nodes_written=%d/%d graph_edges_written=%d/%d",
+                "event=graph_write_completed job_id=%s collection=%s graph_nodes_written=%d graph_nodes_total=%d graph_edges_written=%d graph_edges_total=%d",
                 job.job_id,
                 job.collection,
                 job_state.stats.graph_nodes_written,
@@ -147,28 +167,26 @@ class IndexingPipeline:
                 job_state.stats.graph_edges_written,
                 job_state.stats.graph_edges_total,
             )
-            logger.info("Upserted %d nodes and %d edges into Neo4j", len(nodes_by_key), len(edges_keyed))
+            logger.info(
+                "event=neo4j_upsert_summary job_id=%s collection=%s nodes=%d edges=%d",
+                job.job_id,
+                job.collection,
+                len(nodes_by_key),
+                len(edges_keyed),
+            )
             job_state.stats.nodes = len(nodes_by_key)
             job_state.stats.edges = len(edges_keyed)
             self.job_store.save(job_state)
             # Vector index phase
             job_state.stats.phase = "VECTOR_INDEX"
             self.job_store.save(job_state)
-            logger.info(
-                "Phase set to VECTOR_INDEX for job %s (collection %s)",
-                job.job_id,
-                job.collection,
-            )
+            logger.info("event=phase_set job_id=%s collection=%s phase=%s", job.job_id, job.collection, "VECTOR_INDEX")
             self._build_vector_index(job.collection, chunks, embeddings, node_ids)
-            logger.info("Vector index updated for collection %s", job.collection)
+            logger.info("event=vector_index_updated job_id=%s collection=%s", job.job_id, job.collection)
             # Finalizing phase after vector index persisted
             job_state.stats.phase = "FINALIZING"
             self.job_store.save(job_state)
-            logger.info(
-                "Phase set to FINALIZING for job %s (collection %s)",
-                job.job_id,
-                job.collection,
-            )
+            logger.info("event=phase_set job_id=%s collection=%s phase=%s", job.job_id, job.collection, "FINALIZING")
 
             job_state.status = JobStatus.DONE
             job_state.finished_at = datetime.utcnow()
@@ -176,9 +194,15 @@ class IndexingPipeline:
                 (job_state.finished_at - job_state.started_at).total_seconds() if job_state.started_at else 0.0
             )
             self.job_store.save(job_state)
-            logger.info("Job %s finished successfully.", job.job_id)
+            logger.info(
+                "event=job_finished status=%s job_id=%s collection=%s duration_sec=%.3f",
+                "DONE",
+                job.job_id,
+                job.collection,
+                job_state.stats.duration_sec,
+            )
         except Exception as exc:  # pylint: disable=broad-except
-            logger.exception("Job %s failed: %s", job.job_id, exc)
+            logger.exception("event=job_failed status=%s job_id=%s collection=%s error=%s", "ERROR", job.job_id, job.collection, exc)
             job_state.status = JobStatus.ERROR
             job_state.finished_at = datetime.utcnow()
             job_state.errors.append(JobError(message=str(exc)))
@@ -224,7 +248,7 @@ class IndexingPipeline:
             job_state.stats.embedded_chunks += batch_count
             self.job_store.save(job_state)
             logger.info(
-                "Embedding progress for job %s (collection %s): embedded_chunks=%d vector_chunks=%d",
+                "event=embedding_progress job_id=%s collection=%s embedded_chunks=%d vector_chunks=%d",
                 job_state.job_id,
                 job_state.collection,
                 job_state.stats.embedded_chunks,
