@@ -27,7 +27,7 @@ Use the dedicated dev compose file to run the full stack with live reload for ev
    ```bash
    cp .env.example .env
    ```
-   Update `.env` with real secrets and set `DEV=true`. Populate `NEO4J_USER_RO` / `NEO4J_PASS_RO` with read-only credentials (can match the admin user in local setups). Set both `OPENAI_API_KEY` and `TAVILY_API_KEY`; the dev stack will generate `config.generated.yaml` automatically for the SGR service based on these values.
+   Update `.env` with real secrets and set `DEV=true`. Populate `NEO4J_USER_RO` / `NEO4J_PASS_RO` with read-only credentials (can match the admin user in local setups). Set both `OPENAI_API_KEY` and `TAVILY_API_KEY`; `make up-dev` will generate `config.generated.yaml` from these values before bringing up Docker so the SGR service receives a valid config.
 2. Start the stack:
    ```bash
    make up-dev

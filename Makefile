@@ -15,7 +15,7 @@ ENV_FILE ?= .env
 #   stop-dev    -> docker compose -f docker-compose.yml -f docker-compose.dev.yml stop
 #   logs-dev    -> docker compose -f docker-compose.yml -f docker-compose.dev.yml logs -f
 
-.PHONY: up down stop logs ps build seed-neo4j-constraints env-copy up-dev down-dev stop-dev logs-dev
+.PHONY: up down stop logs ps build seed-neo4j-constraints env-copy config-dev up-dev down-dev stop-dev logs-dev
 
 up:
 	$(COMPOSE) -f $(COMPOSE_FILE) up -d neo4j redis
@@ -41,7 +41,10 @@ seed-neo4j-constraints:
 env-copy:
 	@if [ ! -f $(ENV_FILE) ]; then cp .env.example $(ENV_FILE); fi
 
-up-dev:
+config-dev:
+	python scripts/generate_dev_config.py
+
+up-dev: config-dev
 	$(COMPOSE) $(COMPOSE_DEV_FLAGS) up --build
 
 down-dev:

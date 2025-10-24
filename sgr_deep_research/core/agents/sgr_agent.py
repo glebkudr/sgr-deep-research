@@ -14,9 +14,6 @@ from sgr_deep_research.core.tools import (
     system_agent_tools,
 )
 from sgr_deep_research.services import MCP2ToolConverter
-from sgr_deep_research.settings import get_config
-
-config = get_config()
 
 
 class SGRResearchAgent(BaseAgent):
@@ -68,11 +65,11 @@ class SGRResearchAgent(BaseAgent):
 
     async def _reasoning_phase(self) -> NextStepToolStub:
         async with self.openai_client.chat.completions.stream(
-            model=config.openai.model,
+            model=self._config.openai.model,
             response_format=await self._prepare_tools(),
             messages=await self._prepare_context(),
-            max_tokens=config.openai.max_tokens,
-            temperature=config.openai.temperature,
+            max_tokens=self._config.openai.max_tokens,
+            temperature=self._config.openai.temperature,
         ) as stream:
             async for event in stream:
                 if event.type == "chunk":

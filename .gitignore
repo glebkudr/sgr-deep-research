@@ -1,5 +1,7 @@
 # SGR Research Agent - .gitignore
 
+/frontend/.next/
+
 # БЕЗОПАСНОСТЬ - API КЛЮЧИ И КОНФИДЕНЦИАЛЬНЫЕ ДАННЫЕ
 config.yaml
 *.env

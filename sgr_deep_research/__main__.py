@@ -12,8 +12,6 @@ from sgr_deep_research import __version__
 from sgr_deep_research.api.endpoints import router
 from sgr_deep_research.services import MCP2ToolConverter
 from sgr_deep_research.settings import setup_logging
-
-setup_logging()
 logger = logging.getLogger(__name__)
 
 
@@ -39,13 +37,23 @@ def main():
     )
     args = parser.parse_args()
 
+    setup_logging()
+    logger.info(
+        "event=server_start host=%s port=%s dev=%s app_config=%s",
+        args.host,
+        args.port,
+        os.environ.get("DEV"),
+        os.environ.get("APP_CONFIG"),
+    )
+
     dev_enabled = os.environ.get("DEV", "").strip().lower() == "true"
     reload_kwargs = {}
     if dev_enabled:
         reload_kwargs["reload"] = True
         reload_kwargs["reload_dirs"] = ["sgr_deep_research"]
 
-    uvicorn.run(app, host=args.host, port=args.port, log_level="info", **reload_kwargs)
+    target_app = "sgr_deep_research.__main__:app"
+    uvicorn.run(target_app, host=args.host, port=args.port, log_level="info", **reload_kwargs)
 
 
 if __name__ == "__main__":

@@ -22,8 +22,6 @@ from sgr_deep_research.core.tools import (
 )
 from sgr_deep_research.settings import get_config
 
-config = get_config()
-
 
 class BaseAgent:
     """Base class for agents."""
@@ -48,6 +46,9 @@ class BaseAgent:
         self.log = []
         self.max_iterations = max_iterations
         self.max_clarifications = max_clarifications
+
+        config = get_config()
+        self._config = config
 
         client_kwargs = {"base_url": config.openai.base_url, "api_key": config.openai.api_key}
         if config.openai.proxy.strip():
@@ -112,12 +113,12 @@ class BaseAgent:
         )
 
     def _save_agent_log(self):
-        logs_dir = config.execution.logs_dir
+        logs_dir = self._config.execution.logs_dir
         os.makedirs(logs_dir, exist_ok=True)
         filepath = os.path.join(logs_dir, f"{datetime.now().strftime('%Y%m%d-%H%M%S')}-{self.id}-log.json")
         agent_log = {
             "id": self.id,
-            "model_config": config.openai.model_dump(exclude={"api_key", "proxy"}),
+            "model_config": self._config.openai.model_dump(exclude={"api_key", "proxy"}),
             "task": self.task,
             "toolkit": [tool.tool_name for tool in self.toolkit],
             "log": self.log,

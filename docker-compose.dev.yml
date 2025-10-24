@@ -17,7 +17,7 @@ services:
       CHOKIDAR_USEPOLLING: "true"
       NEXT_TELEMETRY_DISABLED: "1"
     command: >
-      sh -c "if [ ! -d node_modules ]; then npm install; fi && npm run dev -- -H 0.0.0.0 -p ${FRONTEND_PORT}"
+      sh -c "if [ ! -f node_modules/.dev-ready ]; then npm install && touch node_modules/.dev-ready; fi && npm run dev -- -H 0.0.0.0 -p ${FRONTEND_PORT}"
     working_dir: /app
     volumes:
       - ./frontend:/app
@@ -92,15 +92,10 @@ services:
       DEV: "true"
       WATCHFILES_FORCE_POLLING: "true"
       APP_CONFIG: "config.generated.yaml"
-      DEV_APP_CONFIG_PATH: "config.generated.yaml"
     volumes:
       - .:/app
-    entrypoint:
-      [
-        "sh",
-        "-c",
-        "python3 scripts/generate_dev_config.py && python3 -m sgr_deep_research",
-      ]
+      - ./config.generated.yaml:/app/config.generated.yaml:ro
+      - ./logging_config.yaml:/app/logging_config.yaml:ro
     ports:
       - "8010:8010"
     networks:

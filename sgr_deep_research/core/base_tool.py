@@ -9,11 +9,9 @@ from pydantic import BaseModel
 
 # from sgr_deep_research.core.models import AgentStatesEnum
 from sgr_deep_research.settings import get_config
-
 if TYPE_CHECKING:
     from sgr_deep_research.core.models import ResearchContext
 
-config = get_config()
 logger = logging.getLogger(__name__)
 
 
@@ -40,6 +38,7 @@ class MCPBaseTool(BaseTool):
 
     async def __call__(self, _context) -> str:
         payload = self.model_dump()
+        config = get_config()
         try:
             async with self._client:
                 result = await self._client.call_tool(self.tool_name, payload)

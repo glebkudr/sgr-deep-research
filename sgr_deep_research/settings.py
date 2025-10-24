@@ -13,6 +13,8 @@ import yaml
 from envyaml import EnvYAML
 from pydantic import BaseModel, Field
 
+logger = logging.getLogger(__name__)
+
 
 class OpenAIConfig(BaseModel):
     """OpenAI API settings."""
@@ -104,22 +106,40 @@ def get_config() -> AppConfig:
     else:
         app_config_path = Path(app_config_env)
 
+    exists = app_config_path.exists()
+    logger.info(
+        "event=config_resolve app_config_env=%s resolved_path=%s exists=%s",
+        app_config_env,
+        app_config_path,
+        exists,
+    )
+
+    if not exists:
+        raise FileNotFoundError(
+            f"Configuration file not found at '{app_config_path}'. "
+            "Set APP_CONFIG to a valid path and ensure the file is mounted inside the container."
+        )
+
     return AppConfig.model_validate(dict(EnvYAML(str(app_config_path))))
 
 
 def setup_logging() -> None:
     """Setup logging configuration from YAML file."""
-    logging_config_path = Path(get_config().logging.config_file)
+    config = get_config()
+    logging_config_path = Path(config.logging.config_file)
+    if not logging_config_path.is_absolute():
+        logging_config_path = Path.cwd() / logging_config_path
+
     if not logging_config_path.exists():
         raise FileNotFoundError(f"Logging config file not found: {logging_config_path}")
 
     with open(logging_config_path, "r", encoding="utf-8") as f:
         logging_config = yaml.safe_load(f)
 
-    logs_dir = Path(get_config().execution.logs_dir)
+    logs_dir = Path(config.execution.logs_dir)
     logs_dir.mkdir(parents=True, exist_ok=True)
 
-    reports_dir = Path(get_config().execution.reports_dir)
+    reports_dir = Path(config.execution.reports_dir)
     reports_dir.mkdir(parents=True, exist_ok=True)
 
     logging.config.dictConfig(logging_config)

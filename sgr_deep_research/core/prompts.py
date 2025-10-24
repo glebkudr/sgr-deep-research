@@ -5,13 +5,12 @@ from functools import cache
 from sgr_deep_research.core.tools import BaseTool
 from sgr_deep_research.settings import get_config
 
-config = get_config()
-
 
 class PromptLoader:
     @classmethod
     @cache
     def _load_prompt_file(cls, filename: str) -> str:
+        config = get_config()
         user_file_path = os.path.join(config.prompts.prompts_dir, filename)
         lib_file_path = os.path.join(os.path.dirname(__file__), "..", config.prompts.prompts_dir, filename)
 
@@ -27,6 +26,7 @@ class PromptLoader:
 
     @classmethod
     def get_system_prompt(cls, available_tools: list[BaseTool]) -> str:
+        config = get_config()
         template = cls._load_prompt_file(config.prompts.system_prompt_file)
         available_tools_str_list = [
             f"{i}. {tool.tool_name}: {tool.description}" for i, tool in enumerate(available_tools, start=1)

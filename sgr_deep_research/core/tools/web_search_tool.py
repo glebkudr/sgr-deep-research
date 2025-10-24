@@ -16,7 +16,6 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
-config = get_config()
 
 
 class WebSearchTool(BaseTool):
@@ -47,7 +46,7 @@ class WebSearchTool(BaseTool):
     reasoning: str = Field(description="Why this search is needed and what to expect")
     query: str = Field(description="Search query in same language as user request")
     max_results: int = Field(
-        default_factory=lambda: min(config.search.max_results, 10),
+        default_factory=lambda: min(get_config().search.max_results, 10),
         description="Maximum results",
         ge=1,
         le=10,

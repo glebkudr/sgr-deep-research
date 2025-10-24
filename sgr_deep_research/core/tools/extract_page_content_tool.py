@@ -14,7 +14,6 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
-config = get_config()
 
 
 class ExtractPageContentTool(BaseTool):
@@ -62,6 +61,7 @@ class ExtractPageContentTool(BaseTool):
         formatted_result = "Extracted Page Content:\n\n"
 
         # Format results using sources from context (to get correct numbers)
+        config = get_config()
         for url in self.urls:
             if url in context.sources:
                 source = context.sources[url]

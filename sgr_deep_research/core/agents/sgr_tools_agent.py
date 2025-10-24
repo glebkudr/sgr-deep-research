@@ -16,9 +16,6 @@ from sgr_deep_research.core.tools import (
     system_agent_tools,
 )
 from sgr_deep_research.services import MCP2ToolConverter
-from sgr_deep_research.settings import get_config
-
-config = get_config()
 
 
 class SGRToolCallingResearchAgent(SGRResearchAgent):
@@ -71,10 +68,10 @@ class SGRToolCallingResearchAgent(SGRResearchAgent):
 
     async def _reasoning_phase(self) -> ReasoningTool:
         async with self.openai_client.chat.completions.stream(
-            model=config.openai.model,
+            model=self._config.openai.model,
             messages=await self._prepare_context(),
-            max_tokens=config.openai.max_tokens,
-            temperature=config.openai.temperature,
+            max_tokens=self._config.openai.max_tokens,
+            temperature=self._config.openai.temperature,
             tools=await self._prepare_tools(),
             tool_choice={"type": "function", "function": {"name": ReasoningTool.tool_name}},
         ) as stream:
@@ -109,10 +106,10 @@ class SGRToolCallingResearchAgent(SGRResearchAgent):
 
     async def _select_action_phase(self, reasoning: ReasoningTool) -> BaseTool:
         async with self.openai_client.chat.completions.stream(
-            model=config.openai.model,
+            model=self._config.openai.model,
             messages=await self._prepare_context(),
-            max_tokens=config.openai.max_tokens,
-            temperature=config.openai.temperature,
+            max_tokens=self._config.openai.max_tokens,
+            temperature=self._config.openai.temperature,
             tools=await self._prepare_tools(),
             tool_choice=self.tool_choice,
         ) as stream:

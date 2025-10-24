@@ -16,7 +16,6 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
-config = get_config()
 
 
 class CreateReportTool(BaseTool):
@@ -41,6 +40,7 @@ class CreateReportTool(BaseTool):
     confidence: Literal["high", "medium", "low"] = Field(description="Confidence in findings")
 
     async def __call__(self, context: ResearchContext) -> str:
+        config = get_config()
         # Save report
         reports_dir = config.execution.reports_dir
         os.makedirs(reports_dir, exist_ok=True)
