@@ -31,6 +31,8 @@ export default function GraphView(): JSX.Element {
   const [limit, setLimit] = useState<number>(2000);
   const [mode, setMode] = useState<'client' | 'server' | ''>('');
   const [seedsCsv, setSeedsCsv] = useState<string>('');
+  const [preloadStatus, setPreloadStatus] = useState<string>('Idle');
+  const [preloadNodes, setPreloadNodes] = useState<GraphNode[] | null>(null);
   // Explicit options (no silent defaults) - controlled by UI
   const [clientOptions, setClientOptions] = useState({
     alpha: 0.6,
@@ -51,10 +53,99 @@ export default function GraphView(): JSX.Element {
     const qsCol = params.get('collection') || '';
     if (qsCol) setCollection(qsCol);
     const qsMode = (params.get('mode') || '').trim().toLowerCase();
-    if (qsMode === 'client' || qsMode === 'server') setMode(qsMode as 'client' | 'server');
+    if (qsMode === 'client' || qsMode === 'server') {
+      setMode(qsMode as 'client' | 'server');
+    } else {
+      // Default to client mode if not specified in URL
+      setMode('client');
+    }
     const qsSeeds = params.get('seeds') || '';
     if (qsSeeds) setSeedsCsv(qsSeeds);
   }, []);
+
+  // Background preload of subgraph on collection/rels/limit change.
+  useEffect(() => {
+    const col = (collection || '').trim();
+    if (!col) {
+      setPreloadNodes(null);
+      setPreloadStatus('Idle');
+      return;
+    }
+    const params = new URLSearchParams();
+    params.set('collection', col);
+    const r = (rels || '').trim();
+    if (r) params.set('rels', r);
+    if (Number.isFinite(limit)) params.set('limit', String(limit));
+    const url = `/graphview/api/graph?${params.toString()}`;
+    const controller = new AbortController();
+    const started = Date.now();
+    setPreloadStatus('Loading');
+    console.log(JSON.stringify({
+      ts: new Date().toISOString(),
+      level: 'info',
+      event: 'api_graph_preload_start',
+      collection: col,
+      rels: r || '(all)',
+      limit
+    }));
+    fetch(url, { signal: controller.signal })
+      .then(async (res) => {
+        if (!res.ok) {
+          let msg = `HTTP ${res.status}`;
+          try {
+            const j = await res.json();
+            if (j && typeof (j as any).error === 'string') msg = (j as any).error;
+          } catch {
+            // ignore parse error
+          }
+          throw new Error(msg);
+        }
+        const j = await res.json();
+        const nodes: GraphNode[] = Array.isArray(j?.nodes) ? (j.nodes as GraphNode[]) : [];
+        setPreloadNodes(nodes);
+        setPreloadStatus('Ok');
+        console.log(JSON.stringify({
+          ts: new Date().toISOString(),
+          level: 'info',
+          event: 'api_graph_preload_ok',
+          collection: col,
+          nodes: nodes.length,
+          links: Array.isArray(j?.links) ? j.links.length : 0,
+          duration_ms: Date.now() - started
+        }));
+        if (nodes.length > 0) {
+          const pick = nodes[Math.floor(Math.random() * nodes.length)];
+          setSeedsCsv((prev) => {
+            if (prev && prev.trim().length > 0) return prev;
+            console.log(JSON.stringify({
+              ts: new Date().toISOString(),
+              level: 'info',
+              event: 'auto_seed_selected',
+              collection: col,
+              seed: pick.id,
+              nodes: nodes.length
+            }));
+            return pick.id;
+          });
+        }
+      })
+      .catch((e) => {
+        if ((e as any)?.name === 'AbortError') return;
+        setPreloadStatus('Error');
+        console.error(JSON.stringify({
+          ts: new Date().toISOString(),
+          level: 'error',
+          event: 'api_graph_preload_error',
+          collection: col,
+          rels: r || '(all)',
+          limit,
+          message: String(e)
+        }));
+      });
+    return () => {
+      controller.abort();
+    };
+  }, [collection, rels, limit]);
 
   useEffect(() => {
     if (!containerRef.current || !ForceGraph3D) return;
@@ -138,6 +229,39 @@ export default function GraphView(): JSX.Element {
 
   async function loadGraph(): Promise<void> {
     try {
+      // Fail fast behavior for client mode when seeds are not yet selected and no preload is available
+      if (mode === 'client') {
+        const currentSeeds = (seedsCsv || '').split(',').map(s => s.trim()).filter(Boolean);
+        const hasSeeds = currentSeeds.length > 0;
+        const hasPreload = Array.isArray(preloadNodes) && preloadNodes.length > 0;
+        if (!hasSeeds && !hasPreload) {
+          console.error(JSON.stringify({
+            ts: new Date().toISOString(),
+            level: 'error',
+            event: 'client_missing_seeds_logged',
+            mode,
+            collection,
+            rels,
+            limit
+          }));
+          setStatus('Error: Missing seeds for client mode');
+          return;
+        }
+        // If preload exists but seeds are still empty (race), auto-pick one now to avoid empty-seed compute.
+        if (!hasSeeds && hasPreload) {
+          const pick = preloadNodes![Math.floor(Math.random() * preloadNodes!.length)];
+          const picked = String(pick.id);
+          console.log(JSON.stringify({
+            ts: new Date().toISOString(),
+            level: 'info',
+            event: 'auto_seed_selected_on_load',
+            collection,
+            seed: picked,
+            preload_nodes: preloadNodes!.length
+          }));
+          setSeedsCsv(picked);
+        }
+      }
       const apiUrl = buildUrl();
       if (!apiUrl) {
         setStatus('Provide valid params');
@@ -153,7 +277,11 @@ export default function GraphView(): JSX.Element {
       const Graph = graphRef.current;
       if (!Graph) return;
       if (mode === 'client') {
+        // Use latest seedsCsv including possible auto-pick on load
         const seeds = new Set((seedsCsv || '').split(',').map(s => s.trim()).filter(Boolean));
+        if (seeds.size === 0) {
+          throw new Error('Client mode requires seeds for local compute; none provided.');
+        }
         const t0 = Date.now();
         console.log(JSON.stringify({
           ts: new Date().toISOString(),
@@ -229,9 +357,9 @@ export default function GraphView(): JSX.Element {
             throw new Error('Server-mode response missing coreScore; cannot style. No fallbacks.');
           }
           const score = clamp01(n.coreScore);
-          n._score = score;
-          n._size = sizeMin + (sizeMax - sizeMin) * Math.pow(score, exponent);
-          n._labelSize = labelMin + (labelMax - labelMin) * Math.pow(score, exponent);
+          (n as any)._score = score;
+          (n as any)._size = sizeMin + (sizeMax - sizeMin) * Math.pow(score, exponent);
+          (n as any)._labelSize = labelMin + (labelMax - labelMin) * Math.pow(score, exponent);
           scoreById.set(String(n.id), score);
         }
         for (const l of (data as any).links as Array<any>) {
@@ -240,7 +368,7 @@ export default function GraphView(): JSX.Element {
           if (s1 === undefined || s2 === undefined) {
             throw new Error('Server-mode response contains link with unknown node id; cannot style.');
           }
-          l._score = (s1 + s2) / 2;
+          (l as any)._score = (s1 + s2) / 2;
         }
         Graph.graphData(data);
         console.log(JSON.stringify({
@@ -286,7 +414,7 @@ export default function GraphView(): JSX.Element {
     if (mode !== 'client' && mode !== 'server') return 'Select mode';
     if (!Number.isFinite(limit) || limit < 1 || limit > 10000) return 'Limit must be in [1,10000]';
     const seeds = (seedsCsv || '').split(',').map(s => s.trim()).filter(Boolean);
-    if (seeds.length === 0) return 'Seeds are required';
+    if (mode === 'server' && seeds.length === 0) return 'Seeds are required for server mode';
     const { alpha, beta, gamma, lambda, exponent, iterations, dampingFactor } = clientOptions;
     const in01 = (x: number) => x >= 0 && x <= 1;
     if (!in01(alpha)) return 'Alpha must be in [0,1]';
@@ -351,6 +479,7 @@ export default function GraphView(): JSX.Element {
             label="Seeds (CSV of ids)"
             data-testid="input-seeds"
             placeholder="1,2,3"
+            title="Comma-separated Neo4j node ids used as personalization seeds (stringified ids)."
             value={seedsCsv}
             onChange={(e) => setSeedsCsv(e.target.value)}
           />
@@ -452,5 +581,3 @@ export default function GraphView(): JSX.Element {
     </div>
   );
 }
-
-
