@@ -9,6 +9,12 @@ import { Spinner } from "@/components/ui/Spinner";
 import { Toast } from "@/components/ui/Toast";
 import { apiRequest } from "@/lib/api";
 
+const GRAPH_VIEWER_URL = process.env.NEXT_PUBLIC_GRAPH_VIEWER_URL;
+if (!GRAPH_VIEWER_URL) {
+  throw new Error("NEXT_PUBLIC_GRAPH_VIEWER_URL is required for Graph Viewer integration. Please set it in your environment.");
+}
+const GRAPH_VIEWER_BASE = (GRAPH_VIEWER_URL as string).replace(/\/$/, "");
+
 type JobStatus = "PENDING" | "RUNNING" | "DONE" | "ERROR";
 
 type JobStats = {
@@ -153,6 +159,16 @@ export default function UploadPage() {
     }
   };
 
+  const onOpenViewer = (collectionName: string) => {
+    const col = (collectionName || "").trim();
+    if (!col) {
+      setToast({ message: "Нет имени коллекции для просмотра в графе.", variant: "error" });
+      return;
+    }
+    const url = `${GRAPH_VIEWER_BASE}/?collection=${encodeURIComponent(col)}`;
+    window.open(url, "_blank", "noopener,noreferrer");
+  };
+
   const progressValue = useMemo(() => {
     if (!job || totalFiles === 0) return null;
     return Math.min(100, Math.round((job.stats.processed_files / totalFiles) * 100));
@@ -263,10 +279,13 @@ export default function UploadPage() {
                   <strong>{item.collection}</strong>
                   <div className="text-muted">{new Date(item.updatedAt).toISOString().replace("T", " ").slice(0, 19)}</div>
                 </div>
-                <div className="inline" style={{ alignItems: "center" }}>
+                <div className="inline" style={{ alignItems: "center", gap: "0.5rem" }}>
                   <StatusPill status={item.status} />
-                  <Button variant="secondary" onClick={() => onSelectJob(item.jobId)}>
+                  <Button variant="secondary" onClick={() => onOpenViewer(item.collection)}>
                     Открыть
+                  </Button>
+                  <Button variant="secondary" onClick={() => onSelectJob(item.jobId)}>
+                    Статус
                   </Button>
                 </div>
               </li>
