@@ -1,4 +1,4 @@
-export type Node = { id: string; label?: string; title?: string };
+export type Node = { id: string; label?: string; title?: string; path?: string };
 export type Link = { source: string; target: string; type?: string };
 export type GraphData = { nodes: Node[]; links: Link[] };
 
@@ -212,6 +212,7 @@ export function decorateGraphData(data: GraphData, options: Options): DecoratedG
       id: nd.id,
       label: nd.label,
       title: nd.title,
+      path: nd.path,
       _ppr: pprRaw,
       _deg: degRaw,
       _dist: Number.isFinite(d) ? (d as number) : null,
