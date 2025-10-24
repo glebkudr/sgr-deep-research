@@ -181,31 +181,28 @@ export default function GraphView(): JSX.Element {
 
     graphRef.current = Graph;
     // Configure d3-force link distances/strengths with special handling for IN_FILE
-    try {
-      const linkForce: any = Graph.d3Force && Graph.d3Force('link');
-      if (linkForce && typeof linkForce.distance === 'function' && typeof linkForce.strength === 'function') {
-        linkForce
-          .distance((l: any) => (l && l.type === 'IN_FILE' ? 14 : 60))
-          .strength((l: any) => (l && l.type === 'IN_FILE' ? 1.0 : 0.15));
-        console.log(JSON.stringify({
-          ts: new Date().toISOString(),
-          level: 'info',
-          event: 'd3force_configured',
-          distance_in_file: 14,
-          strength_in_file: 1.0,
-          distance_other: 60,
-          strength_other: 0.15
-        }));
-      }
-    } catch (_e) {
-      // Fail silently here would mask config errors; instead log and proceed (render still works).
-      console.error(JSON.stringify({
+    const linkForce: any = Graph.d3Force && Graph.d3Force('link');
+    const canConfig = linkForce && typeof linkForce.distance === 'function' && typeof linkForce.strength === 'function';
+    if (canConfig) {
+      linkForce
+        .distance((l: any) => (l && l.type === 'IN_FILE' ? 14 : 60))
+        .strength((l: any) => (l && l.type === 'IN_FILE' ? 1.0 : 0.15));
+      console.log(JSON.stringify({
         ts: new Date().toISOString(),
-        level: 'error',
-        event: 'd3force_config_error',
-        message: 'Failed to configure link force'
+        level: 'info',
+        event: 'd3force_configured',
+        distance_in_file: 14,
+        strength_in_file: 1.0,
+        distance_other: 60,
+        strength_other: 0.15
       }));
-      // rethrowing would break UI, configuration is optional
+    } else {
+      console.log(JSON.stringify({
+        ts: new Date().toISOString(),
+        level: 'info',
+        event: 'd3force_config_skipped',
+        reason: 'linkForce not available'
+      }));
     }
 
     const onResize = () => {
@@ -566,7 +563,8 @@ export default function GraphView(): JSX.Element {
           };
           Graph.onEngineStop(stopHandler);
         })();
-        setStatus(`Loaded (server): ${data.nodes.length} nodes, ${data.links.length} links`);
+        const dGD = Graph.graphData() as GraphData;
+        setStatus(`Loaded (server): ${dGD.nodes.length} nodes, ${dGD.links.length} links`);
       } else {
         throw new Error('Mode is not selected; cannot proceed.');
       }
@@ -768,7 +766,7 @@ export default function GraphView(): JSX.Element {
                 }));
               }}
             />
-            <span style={{ color: '#e5e7eb', fontSize: 12 }}>Cluster by file (path)</span>
+            <span style={{ color: '#e5e7eb', fontSize: 12 }}>Cluster by file (path) — reload to apply</span>
           </label>
         </div>
         <div style={{ gridColumn: 'span 9', fontSize: 12, opacity: 0.8 }}>
