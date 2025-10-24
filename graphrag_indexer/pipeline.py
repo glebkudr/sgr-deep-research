@@ -52,6 +52,7 @@ class IndexingPipeline:
                     extraction = extract_document(doc)
                     self.schema_validator.validate(extraction, source=doc.rel_path)
                     self._merge_nodes(nodes_by_key, extraction.nodes)
+                    self._tag_edges_with_collection(extraction.edges, job.collection)
                     self._merge_edges(edges_keyed, extraction.edges)
                     text_units.extend(extraction.text_units)
                 except SchemaValidationError as exc:
@@ -118,6 +119,16 @@ class IndexingPipeline:
             key = (edge.start, edge.type, edge.end)
             if key not in edges_keyed:
                 edges_keyed[key] = edge
+
+    def _tag_edges_with_collection(self, edges: List[GraphEdge], collection: str) -> None:
+        if not collection:
+            raise ValueError("IndexingPipeline: 'collection' is required to tag edges; got empty value")
+        for edge in edges:
+            if not hasattr(edge, "properties") or edge.properties is None:
+                raise ValueError("IndexingPipeline: GraphEdge.properties is missing; cannot set 'collection'")
+            if not isinstance(edge.properties, dict):
+                raise TypeError(f"IndexingPipeline: GraphEdge.properties must be a dict, got {type(edge.properties)}")
+            edge.properties["collection"] = collection
 
     def _compute_embeddings(self, chunks: List[Chunk]) -> np.ndarray:
         if not chunks:
