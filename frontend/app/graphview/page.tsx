@@ -8,7 +8,7 @@ import { Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
 import { Button } from '@/components/ui/Button';
 
-type GraphNode = { id: string; label: string; title?: string };
+type GraphNode = { id: string; label: string; title?: string; path?: string };
 type GraphLink = { source: string; target: string; type: string };
 type GraphData = { nodes: GraphNode[]; links: GraphLink[] };
 

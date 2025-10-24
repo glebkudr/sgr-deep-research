@@ -227,6 +227,8 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
       "MATCH (s)-[r]->(t)",
       "RETURN id(s) AS source, id(t) AS target, type(r) AS type",
     ].join("\n");
+    // Note: resultRowsCypher must return s.path/t.path in BOTH branches to populate node.path in server mode.
+    // Do not coalesce path; undefined/null from Neo4j is acceptable per strict policy.
     const resultRowsCypher = (withTypeFilter
       ? [
           "MATCH ()-[r]->()",
