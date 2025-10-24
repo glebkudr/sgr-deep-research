@@ -1,6 +1,0 @@
-{
-  "/_not-found/page": "app/_not-found/page.js",
-  "/graphview/page": "app/graphview/page.js",
-  "/upload/page": "app/upload/page.js",
-  "/graphview/api/graph/route": "app/graphview/api/graph/route.js"
-}
