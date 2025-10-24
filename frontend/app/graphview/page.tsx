@@ -85,8 +85,18 @@ export default function GraphView(): JSX.Element {
         let payload: any = null;
         try {
           payload = await res.json();
-        } catch {
-          // ignore parse error to allow fail-fast with HTTP status
+        } catch (err) {
+          console.error(JSON.stringify({
+            ts: new Date().toISOString(),
+            level: 'error',
+            event: 'api_graph_preload_parse_error',
+            collection: col,
+            rels: r || '(all)',
+            limit,
+            status: res.status,
+            message: err instanceof Error ? err.message : String(err)
+          }));
+          throw err;
         }
         if (!res.ok) {
           const msg = payload && typeof payload.error === 'string' ? payload.error : `HTTP ${res.status}`;
