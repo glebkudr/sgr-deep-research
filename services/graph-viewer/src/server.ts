@@ -1,6 +1,6 @@
 import express, { NextFunction, Request, Response } from "express";
 import path from "path";
-import neo4j, { Driver, Session } from "neo4j-driver";
+import neo4j, { Driver, Integer, Session } from "neo4j-driver";
 
 type JsonRecord = Record<string, unknown>;
 
@@ -137,10 +137,10 @@ app.get("/api/graph", async (req: Request, res: Response, next: NextFunction) =>
 
     for (const record of result.records) {
       const row: GraphRow = {
-        sid: (record.get("sid") as neo4j.Integer).toNumber(),
+        sid: (record.get("sid") as Integer).toNumber(),
         slabel: record.get("slabel"),
         sTitle: record.get("sTitle"),
-        tid: (record.get("tid") as neo4j.Integer).toNumber(),
+        tid: (record.get("tid") as Integer).toNumber(),
         tlabel: record.get("tlabel"),
         tTitle: record.get("tTitle"),
         rel: record.get("rel")
@@ -183,8 +183,41 @@ process.on("unhandledRejection", (reason) => {
   process.exit(1);
 });
 
-const PORT = Number(process.env.PORT || 8081);
-const HOST = "127.0.0.1"; // Restrict to localhost by requirement
+function resolvePort(): number {
+  const raw = process.env.PORT;
+  if (!raw || raw.trim().length === 0) {
+    return 8081;
+  }
+  const parsed = Number(raw);
+  if (!Number.isInteger(parsed) || parsed < 1 || parsed > 65535) {
+    throw new Error(`Invalid PORT value: ${raw}`);
+  }
+  return parsed;
+}
+
+function resolveHost(): string {
+  const override = process.env.HOST;
+  if (override && override.trim().length > 0) {
+    return override.trim();
+  }
+  const devFlagRaw = process.env.DEV;
+  const devEnabled = Boolean(devFlagRaw && devFlagRaw.trim().toLowerCase() === "true");
+  if (devEnabled) {
+    return "0.0.0.0";
+  }
+  return "127.0.0.1";
+}
+
+let PORT: number;
+let HOST: string;
+try {
+  PORT = resolvePort();
+  HOST = resolveHost();
+} catch (err) {
+  logError("config_invalid", { error: String(err) });
+  throw err;
+}
+
 app.listen(PORT, HOST, () => {
   logInfo("server_started", { host: HOST, port: PORT });
 });

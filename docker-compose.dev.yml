@@ -1,0 +1,116 @@
+services:
+  neo4j:
+    environment:
+      DEV: "true"
+
+  redis:
+    environment:
+      DEV: "true"
+
+  front:
+    env_file:
+      - .env
+    environment:
+      DEV: "true"
+      NODE_ENV: "development"
+      WATCHPACK_POLLING: "true"
+      CHOKIDAR_USEPOLLING: "true"
+      NEXT_TELEMETRY_DISABLED: "1"
+    command: >
+      sh -c "if [ ! -d node_modules ]; then npm install; fi && npm run dev -- -H 0.0.0.0 -p ${FRONTEND_PORT}"
+    working_dir: /app
+    volumes:
+      - ./frontend:/app
+      - front_node_modules:/app/node_modules
+
+  graphrag-api:
+    environment:
+      DEV: "true"
+      WATCHFILES_FORCE_POLLING: "true"
+    command:
+      [
+        "uvicorn",
+        "graphrag_api.main:app",
+        "--host",
+        "0.0.0.0",
+        "--port",
+        "${API_PORT}",
+        "--reload",
+        "--reload-dir",
+        "graphrag_api",
+        "--reload-dir",
+        "graphrag_service",
+        "--reload-dir",
+        "graphrag_indexer",
+      ]
+    volumes:
+      - .:/app
+      - ./workspace:${WORKSPACE_DIR:-/workspace}
+      - ./indexes:${INDEXES_DIR:-/indexes}
+
+  graphrag-indexer:
+    environment:
+      DEV: "true"
+      WATCHFILES_FORCE_POLLING: "true"
+    command: >
+      sh -c "python -c \"import importlib; importlib.import_module('watchfiles')\" 2>/dev/null || pip install --no-cache-dir watchfiles && watchfiles --filter=python --ignore-paths=__pycache__ 'python -m graphrag_indexer.worker' graphrag_indexer graphrag_service"
+    working_dir: /app
+    volumes:
+      - .:/app
+      - ./workspace:${WORKSPACE_DIR:-/workspace}
+      - ./indexes:${INDEXES_DIR:-/indexes}
+
+  graph-viewer:
+    build:
+      context: services/graph-viewer
+    env_file:
+      - .env
+    environment:
+      DEV: "true"
+      NODE_ENV: "development"
+    command: >
+      sh -c "if [ ! -f node_modules/.dev-ready ]; then npm install && touch node_modules/.dev-ready; fi && npm run dev"
+    working_dir: /app
+    volumes:
+      - ./services/graph-viewer:/app
+      - graph_viewer_node_modules:/app/node_modules
+    ports:
+      - "8081:8081"
+    networks:
+      - backend
+    depends_on:
+      neo4j:
+        condition: service_started
+
+  sgr-api-service:
+    build:
+      context: services/api_service
+      dockerfile: Dockerfile
+    env_file:
+      - .env
+    environment:
+      DEV: "true"
+      WATCHFILES_FORCE_POLLING: "true"
+      APP_CONFIG: "config.generated.yaml"
+      DEV_APP_CONFIG_PATH: "config.generated.yaml"
+    volumes:
+      - .:/app
+    entrypoint:
+      [
+        "sh",
+        "-c",
+        "python3 scripts/generate_dev_config.py && python3 -m sgr_deep_research",
+      ]
+    ports:
+      - "8010:8010"
+    networks:
+      - backend
+    depends_on:
+      redis:
+        condition: service_healthy
+      neo4j:
+        condition: service_healthy
+
+volumes:
+  front_node_modules:
+  graph_viewer_node_modules:

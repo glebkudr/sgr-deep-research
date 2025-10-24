@@ -19,6 +19,31 @@ ______________________________________________________________________
 
 ______________________________________________________________________
 
+## Development Environment with Hot Reload
+
+Use the dedicated dev compose file to run the full stack with live reload for every service.
+
+1. Copy the sample env file and enable dev mode:
+   ```bash
+   cp .env.example .env
+   ```
+   Update `.env` with real secrets and set `DEV=true`. Populate `NEO4J_USER_RO` / `NEO4J_PASS_RO` with read-only credentials (can match the admin user in local setups). Set both `OPENAI_API_KEY` and `TAVILY_API_KEY`; the dev stack will generate `config.generated.yaml` automatically for the SGR service based on these values.
+2. Start the stack:
+   ```bash
+   make up-dev
+   ```
+   This combines `docker-compose.yml` with `docker-compose.dev.yml`, enabling:
+   - Next.js frontend on port 3000 (`npm run dev` with polling for Docker Desktop);
+   - FastAPI (`uvicorn --reload`) on port 8000;
+   - Indexer worker auto-restart on Python changes via `watchfiles`;
+   - Graph viewer dev server on port 8081 (`ts-node-dev`);
+   - SGR API service running with Uvicorn reload on port 8010.
+3. Stop services with `make stop-dev` or `make down-dev`. Follow logs with `make logs-dev`.
+
+The production compose file remains unchanged; omit `DEV=true` or the dev compose override to run the immutable builds.
+
+______________________________________________________________________
+
 ## Benchmarking
 
 ![SimpleQA Benchmark Comparison](docs/simpleqa_benchmark_comparison.png)

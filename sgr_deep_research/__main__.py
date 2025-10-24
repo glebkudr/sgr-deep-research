@@ -39,7 +39,13 @@ def main():
     )
     args = parser.parse_args()
 
-    uvicorn.run(app, host=args.host, port=args.port, log_level="info")
+    dev_enabled = os.environ.get("DEV", "").strip().lower() == "true"
+    reload_kwargs = {}
+    if dev_enabled:
+        reload_kwargs["reload"] = True
+        reload_kwargs["reload_dirs"] = ["sgr_deep_research"]
+
+    uvicorn.run(app, host=args.host, port=args.port, log_level="info", **reload_kwargs)
 
 
 if __name__ == "__main__":

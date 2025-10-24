@@ -349,3 +349,4 @@ personal_notes.md
 
 # Conversation logs for debugging
 logs/
+config.generated.yaml
