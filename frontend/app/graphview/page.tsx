@@ -2,7 +2,8 @@
 import { useEffect, useRef, useState } from 'react';
 import SpriteText from 'three-spritetext';
 import ForceGraph3D from '3d-force-graph';
-import type { Object3D } from 'three';
+import { Group, Mesh, SphereGeometry, MeshBasicMaterial, Color, type Object3D } from 'three';
+import { decorateGraphData, type DecoratedGraphData } from './decorateGraphData';
 
 type GraphNode = { id: string; label: string; title?: string };
 type GraphLink = { source: string; target: string; type: string };
@@ -25,11 +26,31 @@ export default function GraphView(): JSX.Element {
   const [collection, setCollection] = useState<string>('');
   const [rels, setRels] = useState<string>('');
   const [limit, setLimit] = useState<number>(2000);
+  const [mode, setMode] = useState<'client' | 'server' | ''>('');
+  const [seedsCsv, setSeedsCsv] = useState<string>('');
+  // Explicit client-mode options (no silent defaults)
+  const [clientOptions] = useState({
+    alpha: 0.6,
+    beta: 0.3,
+    gamma: 0.1,
+    lambda: 0.8,
+    exponent: 1.0,
+    sizeMin: 3,
+    sizeMax: 18,
+    labelMin: 6,
+    labelMax: 18,
+    iterations: 20,
+    dampingFactor: 0.85
+  });
 
   useEffect(() => {
     const params = new URLSearchParams(typeof window !== 'undefined' ? window.location.search : '');
     const qsCol = params.get('collection') || '';
     if (qsCol) setCollection(qsCol);
+    const qsMode = (params.get('mode') || '').trim().toLowerCase();
+    if (qsMode === 'client' || qsMode === 'server') setMode(qsMode as 'client' | 'server');
+    const qsSeeds = params.get('seeds') || '';
+    if (qsSeeds) setSeedsCsv(qsSeeds);
   }, []);
 
   useEffect(() => {
@@ -37,16 +58,32 @@ export default function GraphView(): JSX.Element {
     const Graph = ForceGraph3D()(containerRef.current)
       .backgroundColor('#0f172a')
       .nodeRelSize(6)
-      .nodeAutoColorBy('label')
-      .nodeLabel((n: GraphNode) => `${n.label}${n.title ? ': ' + n.title : ''}`)
-      .nodeThreeObjectExtend(true)
-      .nodeThreeObject((node: GraphNode) => {
-        const sprite = new SpriteText(node.title || node.label);
-        sprite.color = colorForLabel(node.label);
-        sprite.textHeight = 14;
-        return sprite as unknown as Object3D;
+      .nodeLabel((n: GraphNode & { _score?: number }) => {
+        const base = `${n.label}${n.title ? ': ' + n.title : ''}`;
+        const sc = typeof (n as any)._score === 'number' ? ` | score: ${(n as any)._score.toFixed(2)}` : '';
+        return base + sc;
       })
-      .linkColor(() => 'rgba(210,220,255,0.6)')
+      .nodeThreeObjectExtend(true)
+      .nodeThreeObject((node: GraphNode & { _score?: number; _size?: number; _labelSize?: number }) => {
+        const score = typeof (node as any)._score === 'number' ? (node as any)._score : 0;
+        const size = typeof (node as any)._size === 'number' ? (node as any)._size : 6;
+        const group = new Group();
+        const geom = new SphereGeometry(size, 16, 16);
+        const color = new Color();
+        // HSL mapping: from blue-ish to red-ish, increasing lightness with score
+        color.setHSL(0.6 - 0.6 * score, 0.7, 0.35 + 0.45 * score);
+        const mat = new MeshBasicMaterial({ color });
+        const mesh = new Mesh(geom, mat);
+        group.add(mesh);
+        const sprite = new SpriteText(node.title || node.label);
+        sprite.color = '#ffffff';
+        sprite.textHeight = typeof (node as any)._labelSize === 'number' ? (node as any)._labelSize : 12;
+        group.add(sprite as unknown as Object3D);
+        return group as unknown as Object3D;
+      })
+      .linkColor(() => '#d2dcff')
+      .linkOpacity((l: GraphLink & { _score?: number }) => 0.2 + 0.7 * ((l as any)._score ?? 0))
+      .linkWidth((l: GraphLink & { _score?: number }) => 0.2 + 2.8 * ((l as any)._score ?? 0))
       .linkLabel((l: GraphLink) => l.type);
 
     graphRef.current = Graph;
@@ -100,19 +137,91 @@ export default function GraphView(): JSX.Element {
     const data: GraphData = await res.json();
     const Graph = graphRef.current;
     if (!Graph) return;
-    Graph.graphData(data);
-    // trigger zoom-to-fit on physics settle
-    (function enableFrame() {
-      let armed = true;
-      const stopHandler = () => {
-        if (!armed) return;
-        armed = false;
-        Graph.zoomToFit(400, 50);
-        Graph.onEngineStop(() => {});
-      };
-      Graph.onEngineStop(stopHandler);
-    })();
-    setStatus(`Loaded: ${data.nodes.length} nodes, ${data.links.length} links`);
+    if (mode === 'client') {
+      const seeds = new Set((seedsCsv || '').split(',').map(s => s.trim()).filter(Boolean));
+      const t0 = Date.now();
+      console.log(JSON.stringify({
+        ts: new Date().toISOString(),
+        level: 'info',
+        event: 'client_compute_start',
+        mode: 'client',
+        nodes: data.nodes.length,
+        links: data.links.length,
+        seeds_count: seeds.size,
+        alpha: clientOptions.alpha,
+        beta: clientOptions.beta,
+        gamma: clientOptions.gamma,
+        lambda: clientOptions.lambda,
+        exponent: clientOptions.exponent,
+        iterations: clientOptions.iterations,
+        dampingFactor: clientOptions.dampingFactor
+      }));
+      try {
+        const decorated: DecoratedGraphData = decorateGraphData(data, {
+          seeds,
+          alpha: clientOptions.alpha,
+          beta: clientOptions.beta,
+          gamma: clientOptions.gamma,
+          lambda: clientOptions.lambda,
+          exponent: clientOptions.exponent,
+          sizeMin: clientOptions.sizeMin,
+          sizeMax: clientOptions.sizeMax,
+          labelMin: clientOptions.labelMin,
+          labelMax: clientOptions.labelMax,
+          iterations: clientOptions.iterations,
+          dampingFactor: clientOptions.dampingFactor
+        });
+        Graph.graphData(decorated);
+        console.log(JSON.stringify({
+          ts: new Date().toISOString(),
+          level: 'info',
+          event: 'client_decorate_done',
+          mode: 'client',
+          nodes: decorated.nodes.length,
+          links: decorated.links.length,
+          duration_ms: Date.now() - t0
+        }));
+        // trigger zoom-to-fit on physics settle
+        (function enableFrame() {
+          let armed = true;
+          const stopHandler = () => {
+            if (!armed) return;
+            armed = false;
+            Graph.zoomToFit(400, 50);
+            Graph.onEngineStop(() => {});
+          };
+          Graph.onEngineStop(stopHandler);
+        })();
+        setStatus(`Loaded (client): ${decorated.nodes.length} nodes, ${decorated.links.length} links`);
+      } catch (e) {
+        console.error(JSON.stringify({
+          ts: new Date().toISOString(),
+          level: 'error',
+          event: 'client_error',
+          mode: 'client',
+          message: String(e),
+          nodes: data.nodes.length,
+          links: data.links.length
+        }));
+        setStatus(`Client error: ${(e as Error).message}`);
+        return;
+      }
+    } else {
+      // default/server or unspecified mode: show raw data (no fallbacks to client)
+      Graph.graphData(data);
+      // trigger zoom-to-fit on physics settle
+      (function enableFrame() {
+        let armed = true;
+        const stopHandler = () => {
+          if (!armed) return;
+          armed = false;
+          Graph.zoomToFit(400, 50);
+          Graph.onEngineStop(() => {});
+        };
+        Graph.onEngineStop(stopHandler);
+      })();
+      setStatus(`Loaded: ${data.nodes.length} nodes, ${data.links.length} links`);
+    }
   }
 
   return (
