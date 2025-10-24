@@ -8,7 +8,7 @@ type ProgressBarProps = {
 export function ProgressBar({ value, label }: ProgressBarProps) {
   const clamped = typeof value === "number" ? Math.min(100, Math.max(0, value)) : null;
   return (
-    <div className="progress">
+    <div className="progress" data-testid="progress-bar">
       {label && <span className="progress-label">{label}</span>}
       <div className="progress-track">
         <div
