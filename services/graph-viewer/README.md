@@ -27,7 +27,7 @@ Security:
 
 Run locally (Node 20+):
 1) Install deps
-   npm ci
+   npm install
 2) Build
    npm run build
 3) Set env and start
