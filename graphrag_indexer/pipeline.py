@@ -117,13 +117,58 @@ class IndexingPipeline:
             if embeddings.size:
                 logger.info("Computed embeddings for %d chunks", embeddings.shape[0])
 
-            node_ids = self._write_graph(job_state, nodes_by_key, list(edges_keyed.values()))
+            # Prepare graph write phase with totals
+            edges_list = list(edges_keyed.values())
+            job_state.stats.graph_nodes_total = len(nodes_by_key)
+            job_state.stats.graph_edges_total = len(edges_list)
+            job_state.stats.graph_nodes_written = 0
+            job_state.stats.graph_edges_written = 0
+            job_state.stats.phase = "GRAPH_WRITE"
+            self.job_store.save(job_state)
+            logger.info(
+                "Phase set to GRAPH_WRITE for job %s (collection %s): graph_nodes_total=%d graph_edges_total=%d",
+                job.job_id,
+                job.collection,
+                job_state.stats.graph_nodes_total,
+                job_state.stats.graph_edges_total,
+            )
+
+            node_ids = self._write_graph(job_state, nodes_by_key, edges_list)
+            # Best-effort progress: mark written equals totals upon completion
+            job_state.stats.graph_nodes_written = job_state.stats.graph_nodes_total
+            job_state.stats.graph_edges_written = job_state.stats.graph_edges_total
+            self.job_store.save(job_state)
+            logger.info(
+                "Graph write completed for job %s (collection %s): graph_nodes_written=%d/%d graph_edges_written=%d/%d",
+                job.job_id,
+                job.collection,
+                job_state.stats.graph_nodes_written,
+                job_state.stats.graph_nodes_total,
+                job_state.stats.graph_edges_written,
+                job_state.stats.graph_edges_total,
+            )
             logger.info("Upserted %d nodes and %d edges into Neo4j", len(nodes_by_key), len(edges_keyed))
             job_state.stats.nodes = len(nodes_by_key)
             job_state.stats.edges = len(edges_keyed)
             self.job_store.save(job_state)
+            # Vector index phase
+            job_state.stats.phase = "VECTOR_INDEX"
+            self.job_store.save(job_state)
+            logger.info(
+                "Phase set to VECTOR_INDEX for job %s (collection %s)",
+                job.job_id,
+                job.collection,
+            )
             self._build_vector_index(job.collection, chunks, embeddings, node_ids)
             logger.info("Vector index updated for collection %s", job.collection)
+            # Finalizing phase after vector index persisted
+            job_state.stats.phase = "FINALIZING"
+            self.job_store.save(job_state)
+            logger.info(
+                "Phase set to FINALIZING for job %s (collection %s)",
+                job.job_id,
+                job.collection,
+            )
 
             job_state.status = JobStatus.DONE
             job_state.finished_at = datetime.utcnow()
