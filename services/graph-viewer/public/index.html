@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Neo4j Graph 3D Viewer</title>
+    <style>
+      html, body {
+        margin: 0;
+        padding: 0;
+        height: 100%;
+        background: #0b0e13;
+        color: #e6e6e6;
+        font-family: system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, 'Helvetica Neue', Arial, 'Noto Sans', 'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol';
+      }
+      #toolbar {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        background: rgba(20, 24, 31, 0.95);
+        border-bottom: 1px solid #223;
+        padding: 8px 12px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        z-index: 10;
+      }
+      #graph {
+        position: absolute;
+        top: 48px;
+        left: 0;
+        right: 0;
+        bottom: 0;
+      }
+      .pill {
+        padding: 4px 8px;
+        border-radius: 999px;
+        background: #16202d;
+        color: #cfd8e3;
+        border: 1px solid #2a3a50;
+        font-size: 12px;
+      }
+      input, button {
+        background: #0f141b;
+        color: #e6e6e6;
+        border: 1px solid #2a3a50;
+        border-radius: 6px;
+        padding: 6px 8px;
+      }
+      button {
+        cursor: pointer;
+      }
+      a, a:visited {
+        color: #8ac7ff;
+      }
+      #status {
+        margin-left: auto;
+        font-size: 12px;
+        opacity: 0.8;
+      }
+      .label {
+        font-size: 12px;
+        opacity: 0.85;
+      }
+    </style>
+    <script src="https://unpkg.com/3d-force-graph"></script>
+  </head>
+  <body>
+    <div id="toolbar">
+      <span class="label">Collection:</span>
+      <input id="collection-input" placeholder="collection" size="18" />
+      <span class="label">Rels (csv):</span>
+      <input id="rels-input" placeholder="CALLS,HAS_ROUTINE" size="22" />
+      <span class="label">Limit:</span>
+      <input id="limit-input" type="number" min="1" max="10000" value="2000" style="width: 90px" />
+      <button id="load-btn">Load</button>
+      <div id="status" class="pill">Idle</div>
+    </div>
+    <div id="graph"></div>
+    <script src="/client.js"></script>
+  </body>
+  </html>
