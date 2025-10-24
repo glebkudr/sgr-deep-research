@@ -130,7 +130,7 @@ export default function GraphView(): JSX.Element {
           collection: col,
           rels: r || '(all)',
           limit,
-          message: String(e)
+          message: e instanceof Error ? e.message : String(e)
         }));
       });
     return () => {
@@ -385,7 +385,7 @@ export default function GraphView(): JSX.Element {
         level: 'error',
         event: 'client_error',
         mode,
-        message: String(e),
+        message: e instanceof Error ? e.message : String(e),
         collection,
         rels,
         limit
