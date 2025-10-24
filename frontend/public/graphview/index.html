@@ -10,7 +10,7 @@
         margin: 0;
         padding: 0;
         height: 100%;
-        background: #0b0e13;
+        background: #0f172a;
         color: #e6e6e6;
         font-family: system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, 'Helvetica Neue', Arial, 'Noto Sans', 'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol';
       }
@@ -33,6 +33,7 @@
         left: 0;
         right: 0;
         bottom: 0;
+        z-index: 0;
       }
       .pill {
         padding: 4px 8px;
@@ -65,9 +66,9 @@
         opacity: 0.85;
       }
     </style>
-    <script src="https://unpkg.com/three"></script>
-    <script src="https://unpkg.com/three-spritetext"></script>
-    <script src="https://unpkg.com/3d-force-graph"></script>
+    <script src="https://unpkg.com/three@0.180.0/build/three.min.js"></script>
+    <script src="https://unpkg.com/three-spritetext@1.10.0/dist/three-spritetext.min.js"></script>
+    <script src="https://unpkg.com/3d-force-graph@1.79.0/dist/3d-force-graph.min.js"></script>
   </head>
   <body>
     <div id="toolbar">
@@ -78,6 +79,7 @@
       <span class="label">Limit:</span>
       <input id="limit-input" type="number" min="1" max="10000" value="2000" style="width: 90px" />
       <button id="load-btn">Load</button>
+      <button id="fit-btn" title="Re-center / Zoom to fit">Re-center</button>
       <div id="status" class="pill">Idle</div>
     </div>
     <div id="graph"></div>

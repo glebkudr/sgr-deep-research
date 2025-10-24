@@ -50,10 +50,10 @@ function getDriver(): { driver: Driver; database: string | undefined } {
 }
 
 type GraphRow = {
-  sid: number;
+  sid: string; // stringified neo4j id
   slabel: string;
   sTitle?: string | null;
-  tid: number;
+  tid: string; // stringified neo4j id
   tlabel: string;
   tTitle?: string | null;
   rel: string;
@@ -102,8 +102,8 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
         "WHERE r.collection = $collection AND type(r) IN $rels",
         "WITH r LIMIT $limit",
         "MATCH (s)-[r]->(t)",
-        "RETURN id(s) AS sid, labels(s)[0] AS slabel, coalesce(s.name,s.title,s.qualified_name) AS sTitle,",
-        "       id(t) AS tid, labels(t)[0] AS tlabel, coalesce(t.name,t.title,t.qualified_name) AS tTitle,",
+        "RETURN toString(id(s)) AS sid, labels(s)[0] AS slabel, coalesce(s.name,s.title,s.qualified_name) AS sTitle,",
+        "       toString(id(t)) AS tid, labels(t)[0] AS tlabel, coalesce(t.name,t.title,t.qualified_name) AS tTitle,",
         "       type(r) AS rel",
       ].join("\n")
     : [
@@ -111,8 +111,8 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
         "WHERE r.collection = $collection",
         "WITH r LIMIT $limit",
         "MATCH (s)-[r]->(t)",
-        "RETURN id(s) AS sid, labels(s)[0] AS slabel, coalesce(s.name,s.title,s.qualified_name) AS sTitle,",
-        "       id(t) AS tid, labels(t)[0] AS tlabel, coalesce(t.name,t.title,t.qualified_name) AS tTitle,",
+        "RETURN toString(id(s)) AS sid, labels(s)[0] AS slabel, coalesce(s.name,s.title,s.qualified_name) AS sTitle,",
+        "       toString(id(t)) AS tid, labels(t)[0] AS tlabel, coalesce(t.name,t.title,t.qualified_name) AS tTitle,",
         "       type(r) AS rel",
       ].join("\n");
 
@@ -143,15 +143,15 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
       rels: withTypeFilter ? rels : undefined,
     });
 
-    const nodesMap = new Map<number, { id: number; label: string; title?: string }>();
-    const links: { source: number; target: number; type: string }[] = [];
+    const nodesMap = new Map<string, { id: string; label: string; title?: string }>();
+    const links: { source: string; target: string; type: string }[] = [];
 
     for (const record of result.records) {
       const row: GraphRow = {
-        sid: (record.get("sid") as Integer).toNumber(),
+        sid: record.get("sid") as string,
         slabel: record.get("slabel") as string,
         sTitle: (record.get("sTitle") as string | null) ?? null,
-        tid: (record.get("tid") as Integer).toNumber(),
+        tid: record.get("tid") as string,
         tlabel: record.get("tlabel") as string,
         tTitle: (record.get("tTitle") as string | null) ?? null,
         rel: record.get("rel") as string,
@@ -167,6 +167,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
 
     const nodes = Array.from(nodesMap.values());
     const res = NextResponse.json({ nodes, links });
+    logInfo("graph_counts", { nodes: nodes.length, links: links.length });
     logInfo("http_request", {
       method: "GET",
       path: `${pathname}${req.nextUrl.search}`,
