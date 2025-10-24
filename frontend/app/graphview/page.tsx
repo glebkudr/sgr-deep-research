@@ -98,7 +98,6 @@ export default function GraphView(): JSX.Element {
           } catch {
             // ignore parse error
           }
-          throw new Error(msg);
         }
         const j = await res.json();
         const nodes: GraphNode[] = Array.isArray(j?.nodes) ? (j.nodes as GraphNode[]) : [];
@@ -181,15 +180,6 @@ export default function GraphView(): JSX.Element {
       .linkLabel((l: GraphLink) => l.type);
 
     graphRef.current = Graph;
-    let shouldFrameOnStop = false;
-    Graph.onEngineStop(() => {
-      if (!shouldFrameOnStop) return;
-      const data: GraphData = Graph.graphData();
-      if (!data || !Array.isArray(data.nodes) || data.nodes.length === 0) return;
-      shouldFrameOnStop = false;
-      console.log(JSON.stringify({ ts: new Date().toISOString(), level: 'info', event: 'client_zoom_fit', reason: 'engine_stop', nodes: data.nodes.length, links: data.links?.length ?? 0 }));
-      Graph.zoomToFit(400, 50);
-    });
 
     const onResize = () => {
       const data: GraphData = Graph.graphData();
@@ -229,9 +219,11 @@ export default function GraphView(): JSX.Element {
 
   async function loadGraph(): Promise<void> {
     try {
+      // Establish effective seeds snapshot to avoid race with setState
+      let effectiveSeedsCsv = seedsCsv;
       // Fail fast behavior for client mode when seeds are not yet selected and no preload is available
       if (mode === 'client') {
-        const currentSeeds = (seedsCsv || '').split(',').map(s => s.trim()).filter(Boolean);
+        const currentSeeds = (effectiveSeedsCsv || '').split(',').map(s => s.trim()).filter(Boolean);
         const hasSeeds = currentSeeds.length > 0;
         const hasPreload = Array.isArray(preloadNodes) && preloadNodes.length > 0;
         if (!hasSeeds && !hasPreload) {
@@ -259,7 +251,8 @@ export default function GraphView(): JSX.Element {
             seed: picked,
             preload_nodes: preloadNodes!.length
           }));
-          setSeedsCsv(picked);
+          effectiveSeedsCsv = picked;
+          setSeedsCsv(effectiveSeedsCsv);
         }
       }
       const apiUrl = buildUrl();
@@ -277,8 +270,8 @@ export default function GraphView(): JSX.Element {
       const Graph = graphRef.current;
       if (!Graph) return;
       if (mode === 'client') {
-        // Use latest seedsCsv including possible auto-pick on load
-        const seeds = new Set((seedsCsv || '').split(',').map(s => s.trim()).filter(Boolean));
+        // Use effective snapshot including possible auto-pick on load
+        const seeds = new Set((effectiveSeedsCsv || '').split(',').map(s => s.trim()).filter(Boolean));
         if (seeds.size === 0) {
           throw new Error('Client mode requires seeds for local compute; none provided.');
         }
@@ -574,7 +567,7 @@ export default function GraphView(): JSX.Element {
           </Button>
         </div>
         <div style={{ gridColumn: 'span 9', fontSize: 12, opacity: 0.8 }}>
-          {validationError ? `Validation: ${validationError}` : status}
+          {validationError ? `Validation: ${validationError}` : `${status} | Preload: ${preloadStatus}`}
         </div>
       </div>
       <div ref={containerRef} data-testid="graph-container" style={{ position: 'absolute', top: 160, left: 0, right: 0, bottom: 0 }} />
