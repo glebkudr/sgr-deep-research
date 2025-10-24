@@ -13,6 +13,7 @@ type JobStatus = "PENDING" | "RUNNING" | "DONE" | "ERROR";
 
 type JobStats = {
   processed_files: number;
+  total_files: number;
   nodes: number;
   edges: number;
   vector_chunks: number;
@@ -46,7 +47,6 @@ export default function UploadPage() {
   const [error, setError] = useState<string | null>(null);
   const [toast, setToast] = useState<{ message: string; variant?: "info" | "success" | "error" } | null>(null);
   const [recentJobs, setRecentJobs] = useState<RecentJob[]>([]);
-  const totalFiles = files.length;
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
 const allowed = useMemo(() => new Set(["bsl", "xml", "html", "htm", "txt"]), []);
@@ -164,9 +164,9 @@ const allowed = useMemo(() => new Set(["bsl", "xml", "html", "htm", "txt"]), [])
   };
 
   const progressValue = useMemo(() => {
-    if (!job || totalFiles === 0) return null;
-    return Math.min(100, Math.round((job.stats.processed_files / totalFiles) * 100));
-  }, [job, totalFiles]);
+    if (!job || !job.stats || (job.stats.total_files ?? 0) <= 0) return null;
+    return Math.min(100, Math.round((job.stats.processed_files / job.stats.total_files) * 100));
+  }, [job?.stats?.processed_files, job?.stats?.total_files, job]);
 
   return (
     <div className="stack">
@@ -193,15 +193,7 @@ const allowed = useMemo(() => new Set(["bsl", "xml", "html", "htm", "txt"]), [])
 
         {files.length > 0 && (
           <div className="card">
-            <h3>Выбрано файлов: {files.length}</h3>
-            <ul className="file-list">
-              {files.map((file) => (
-                <li key={file.name}>
-                  <span>{file.name}</span>
-                  <span>{(file.size / 1024).toFixed(1)} KB</span>
-                </li>
-              ))}
-            </ul>
+            <h3 data-testid="selected-files-count">Выбрано файлов: {files.length}</h3>
           </div>
         )}
 
@@ -224,7 +216,16 @@ const allowed = useMemo(() => new Set(["bsl", "xml", "html", "htm", "txt"]), [])
             <StatusPill status={job?.status ?? "PENDING"} />
           </header>
 
-          {progressValue !== null && <ProgressBar value={progressValue} label="Обработка файлов" />}
+          {progressValue !== null && (
+            <div className="stack" data-testid="job-progress">
+              <ProgressBar value={progressValue} label="Files processed" />
+              <div className="inline text-muted" data-testid="job-progress-count" style={{ gap: "0.25rem" }}>
+                <span>{job?.stats.processed_files ?? 0}</span>
+                <span>/</span>
+                <span>{job?.stats.total_files ?? 0}</span>
+              </div>
+            </div>
+          )}
 
           <div className="card-grid">
             <StatCard title="Файлы" value={job?.stats.processed_files ?? 0} />
