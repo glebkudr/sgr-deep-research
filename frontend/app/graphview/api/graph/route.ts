@@ -395,9 +395,15 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
           }
         }
       } catch (e) {
-        logError("gds_bfs_unavailable", { error: String(e) });
+        logError("gds_unavailable", {
+          mode: "server",
+          collection,
+          rels: withTypeFilter ? rels : "(all)",
+          limit,
+          error: String(e),
+        });
         const res = NextResponse.json(
-          { error: "Server-mode distance computation requires GDS bfs; not available. mode=server is not supported on this server." },
+          { error: "Server-mode requires Neo4j GDS; not available. mode=server is not supported on this server." },
           { status: 501 }
         );
         logInfo("http_request", {
