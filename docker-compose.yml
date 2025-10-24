@@ -96,13 +96,16 @@ services:
       args:
         NEXT_PUBLIC_API_URL: "http://localhost:8000"
         NEXT_PUBLIC_JWT: "${NEXT_PUBLIC_JWT:-}"
-        NEXT_PUBLIC_GRAPH_VIEWER_URL: "${NEXT_PUBLIC_GRAPH_VIEWER_URL}"
     env_file:
       - .env
     environment:
       NEXT_PUBLIC_API_URL: "http://localhost:8000"
       NEXT_PUBLIC_JWT: "${NEXT_PUBLIC_JWT:-}"
-      NEXT_PUBLIC_GRAPH_VIEWER_URL: "${NEXT_PUBLIC_GRAPH_VIEWER_URL}"
+      # Server-side Neo4j credentials for /graphview/api/graph
+      NEO4J_URI: "${NEO4J_URI}"
+      NEO4J_USERNAME: "${NEO4J_USERNAME}"
+      NEO4J_PASSWORD: "${NEO4J_PASSWORD}"
+      NEO4J_DATABASE: "${NEO4J_DATABASE:-}"
     ports:
       - "${FRONTEND_PORT:-3000}:3000"
     depends_on:
@@ -110,6 +113,7 @@ services:
         condition: service_started
     networks:
       - frontend
+      - backend
 
 networks:
   backend:

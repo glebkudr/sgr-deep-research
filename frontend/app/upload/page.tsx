@@ -9,12 +9,6 @@ import { Spinner } from "@/components/ui/Spinner";
 import { Toast } from "@/components/ui/Toast";
 import { apiRequest } from "@/lib/api";
 
-const GRAPH_VIEWER_URL = process.env.NEXT_PUBLIC_GRAPH_VIEWER_URL;
-if (!GRAPH_VIEWER_URL) {
-  throw new Error("NEXT_PUBLIC_GRAPH_VIEWER_URL is required for Graph Viewer integration. Please set it in your environment.");
-}
-const GRAPH_VIEWER_BASE = (GRAPH_VIEWER_URL as string).replace(/\/$/, "");
-
 type JobStatus = "PENDING" | "RUNNING" | "DONE" | "ERROR";
 
 type JobStats = {
@@ -55,7 +49,7 @@ export default function UploadPage() {
   const totalFiles = files.length;
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
-  const allowed = useMemo(() => new Set(["bsl", "xml", "html", "htm", "txt"]), []);
+const allowed = useMemo(() => new Set(["bsl", "xml", "html", "htm", "txt"]), []);
 
   useEffect(() => {
     // Enable directory selection on supported browsers
@@ -165,7 +159,7 @@ export default function UploadPage() {
       setToast({ message: "Нет имени коллекции для просмотра в графе.", variant: "error" });
       return;
     }
-    const url = `${GRAPH_VIEWER_BASE}/?collection=${encodeURIComponent(col)}`;
+    const url = `/graphview?collection=${encodeURIComponent(col)}`;
     window.open(url, "_blank", "noopener,noreferrer");
   };
 
