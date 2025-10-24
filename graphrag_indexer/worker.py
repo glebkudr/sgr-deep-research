@@ -24,19 +24,19 @@ class Worker:
         self._stopped = True
 
     def run(self) -> None:
-        logger.info("GraphRAG indexer worker started.")
+        logger.info("event=worker_started service=indexer")
         while not self._stopped:
             job = self.queue.dequeue(timeout=5)
             if not job:
                 time.sleep(1)
                 continue
-            logger.info("Dequeued job %s (%s).", job.job_id, job.collection)
+            logger.info("event=job_dequeued job_id=%s collection=%s", job.job_id, job.collection)
             try:
                 self.pipeline.run(job)
             except Exception as exc:  # pylint: disable=broad-except
-                logger.exception("Job %s failed with unexpected error: %s", job.job_id, exc)
+                logger.exception("event=job_unexpected_error job_id=%s collection=%s error=%s", job.job_id, job.collection, exc)
 
-        logger.info("GraphRAG indexer worker stopped.")
+        logger.info("event=worker_stopped service=indexer")
 
 
 def main() -> None:
@@ -44,7 +44,7 @@ def main() -> None:
     worker = Worker()
 
     def handle_signal(signum: int, frame: Optional[object]) -> None:  # noqa: ARG001
-        logger.info("Received signal %s. Shutting down worker.", signum)
+        logger.info("event=signal_received service=indexer signal=%s", signum)
         worker.stop()
 
     signal.signal(signal.SIGTERM, handle_signal)
@@ -55,7 +55,7 @@ def main() -> None:
     except KeyboardInterrupt:
         worker.stop()
     except Exception as exc:  # pylint: disable=broad-except
-        logger.exception("Worker crashed: %s", exc)
+        logger.exception("event=worker_crashed service=indexer error=%s", exc)
         sys.exit(1)
 
 
