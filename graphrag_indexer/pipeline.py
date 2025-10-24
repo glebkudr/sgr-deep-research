@@ -36,12 +36,31 @@ class IndexingPipeline:
         job_state.status = JobStatus.RUNNING
         job_state.started_at = datetime.utcnow()
         job_state.errors = []
-        job_state.stats = JobStats()
+        # Preserve expected total_files if it was set at upload time
+        preserved_total = job_state.stats.total_files if job_state.stats else 0
+        job_state.stats = JobStats(total_files=preserved_total)
         self.job_store.save(job_state)
 
         try:
             documents = load_documents(Path(job.raw_path))
             logger.info("Loaded %d documents from %s", len(documents), job.raw_path)
+            if job_state.stats.total_files == 0:
+                job_state.stats.total_files = len(documents)
+                self.job_store.save(job_state)
+                logger.info(
+                    "Initialized total_files after load for job %s (collection %s): total_files=%d",
+                    job.job_id,
+                    job.collection,
+                    job_state.stats.total_files,
+                )
+            elif job_state.stats.total_files != len(documents):
+                logger.warning(
+                    "Total files mismatch for job %s (collection %s): expected=%d actual=%d",
+                    job.job_id,
+                    job.collection,
+                    job_state.stats.total_files,
+                    len(documents),
+                )
 
             nodes_by_key: Dict[NodeKey, GraphNode] = {}
             edges_keyed: Dict[Tuple[NodeKey, str, NodeKey], GraphEdge] = {}
@@ -64,6 +83,14 @@ class IndexingPipeline:
                 finally:
                     job_state.stats.processed_files += 1
                     self.job_store.save(job_state)
+                    if job_state.stats.processed_files % 100 == 0:
+                        logger.info(
+                            "Progress job %s (collection %s): processed_files=%d total_files=%d",
+                            job.job_id,
+                            job.collection,
+                            job_state.stats.processed_files,
+                            job_state.stats.total_files,
+                        )
 
             if job_state.errors:
                 logger.warning("Job %s completed with %d errors.", job.job_id, len(job_state.errors))

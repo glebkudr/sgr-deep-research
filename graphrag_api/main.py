@@ -87,6 +87,7 @@ def create_app() -> FastAPI:
             shutil.move(str(source_path), str(target_path))
 
         job_state = JobState(job_id=job_id, collection=collection)
+        job_state.stats.total_files = len(saved_files)
         job_store.save(job_state)
         job_queue.enqueue(IndexJob(job_id=job_id, collection=collection, raw_path=str(raw_dir)))
         logger.info("Enqueued job %s for collection %s with %d files.", job_id, collection, len(saved_files))

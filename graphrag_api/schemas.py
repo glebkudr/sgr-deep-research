@@ -18,6 +18,7 @@ class UploadResponse(BaseModel):
 
 
 class JobStatsSchema(BaseModel):
+    total_files: int = Field(default=0)
     processed_files: int
     nodes: int
     edges: int
@@ -48,6 +49,7 @@ class JobStateSchema(BaseModel):
             collection=state.collection,
             status=state.status.value,
             stats=JobStatsSchema(
+                total_files=state.stats.total_files,
                 processed_files=state.stats.processed_files,
                 nodes=state.stats.nodes,
                 edges=state.stats.edges,
