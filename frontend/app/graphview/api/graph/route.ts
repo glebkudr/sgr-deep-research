@@ -150,6 +150,8 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
         const e = Number(expRaw);
         if (!Number.isFinite(e) || e <= 0) throw new Error("Invalid 'exponent' (expected > 0).");
         exponent = e;
+        // Note: exponent is intentionally parsed here but not used on the server.
+        // It is applied on the client for visual mapping (size/label scaling).
       }
     } catch (e) {
       const res = NextResponse.json({ error: (e as Error).message }, { status: 400 });
@@ -253,6 +255,30 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
         mode: "server",
         seed_count: seedStrs.length,
       });
+
+      // Explicit GDS availability check: return 501 if GDS is not installed/available
+      try {
+        await session.run("CALL gds.version() YIELD version RETURN version");
+      } catch (e) {
+        logError("gds_unavailable", {
+          mode: "server",
+          collection,
+          rels: withTypeFilter ? rels : "(all)",
+          limit,
+          error: String(e),
+        });
+        const res = NextResponse.json(
+          { error: "Server-mode requires Neo4j GDS; not available. mode=server is not supported on this server." },
+          { status: 501 }
+        );
+        logInfo("http_request", {
+          method: "GET",
+          path: `${pathname}${req.nextUrl.search}`,
+          status: 501,
+          duration_ms: Date.now() - start,
+        });
+        return res;
+      }
 
       // Project subgraph
       const projectRes = await session.run(
@@ -453,6 +479,27 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
       });
       return res;
     } catch (err) {
+      const errStr = String(err);
+      if (/There is no procedure with the name gds/i.test(errStr)) {
+        logError("gds_unavailable", {
+          mode: "server",
+          collection,
+          limit,
+          rels: withTypeFilter ? rels : "(all)",
+          error: errStr,
+        });
+        const res = NextResponse.json(
+          { error: "Server-mode requires Neo4j GDS; not available. mode=server is not supported on this server." },
+          { status: 501 }
+        );
+        logInfo("http_request", {
+          method: "GET",
+          path: `${pathname}${req.nextUrl.search}`,
+          status: 501,
+          duration_ms: Date.now() - start,
+        });
+        return res;
+      }
       logError("api_graph_core_failed", {
         error: String(err),
         collection,
