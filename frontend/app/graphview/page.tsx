@@ -4,11 +4,12 @@ import SpriteText from 'three-spritetext';
 import ForceGraph3D from '3d-force-graph';
 import { Group, Mesh, SphereGeometry, MeshBasicMaterial, Color, type Object3D } from 'three';
 import { decorateGraphData, type DecoratedGraphData } from './decorateGraphData';
+import { augmentWithFileClusters } from './clusterGraphData';
 import { Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
 import { Button } from '@/components/ui/Button';
 
-type GraphNode = { id: string; label: string; title?: string };
+type GraphNode = { id: string; label: string; title?: string; path?: string };
 type GraphLink = { source: string; target: string; type: string };
 type GraphData = { nodes: GraphNode[]; links: GraphLink[] };
 
@@ -23,6 +24,7 @@ export default function GraphView(): JSX.Element {
   const [seedsCsv, setSeedsCsv] = useState<string>('');
   const [preloadStatus, setPreloadStatus] = useState<string>('Idle');
   const [preloadNodes, setPreloadNodes] = useState<GraphNode[] | null>(null);
+  const [clusterByPath, setClusterByPath] = useState<boolean>(false);
   // Explicit options (no silent defaults) - controlled by UI
   const [clientOptions, setClientOptions] = useState({
     alpha: 0.6,
@@ -83,8 +85,18 @@ export default function GraphView(): JSX.Element {
         let payload: any = null;
         try {
           payload = await res.json();
-        } catch {
-          // ignore parse error to allow fail-fast with HTTP status
+        } catch (err) {
+          console.error(JSON.stringify({
+            ts: new Date().toISOString(),
+            level: 'error',
+            event: 'api_graph_preload_parse_error',
+            collection: col,
+            rels: r || '(all)',
+            limit,
+            status: res.status,
+            message: err instanceof Error ? err.message : String(err)
+          }));
+          throw err;
         }
         if (!res.ok) {
           const msg = payload && typeof payload.error === 'string' ? payload.error : `HTTP ${res.status}`;
@@ -153,10 +165,16 @@ export default function GraphView(): JSX.Element {
         const score = typeof (node as any)._score === 'number' ? (node as any)._score : 0;
         const size = typeof (node as any)._size === 'number' ? (node as any)._size : 6;
         const group = new Group();
-        const geom = new SphereGeometry(size, 16, 16);
+        const isFile = node.label === 'File';
+        const baseSize = isFile ? size * 1.15 : size;
+        const geom = new SphereGeometry(baseSize, 16, 16);
         const color = new Color();
-        // HSL mapping: from blue-ish to red-ish, increasing lightness with score
-        color.setHSL(0.6 - 0.6 * score, 0.7, 0.35 + 0.45 * score);
+        if (isFile) {
+          color.set('#ffcc66');
+        } else {
+          // HSL mapping: from blue-ish to red-ish, increasing lightness with score
+          color.setHSL(0.6 - 0.6 * score, 0.7, 0.35 + 0.45 * score);
+        }
         const mat = new MeshBasicMaterial({ color });
         const mesh = new Mesh(geom, mat);
         group.add(mesh);
@@ -172,6 +190,30 @@ export default function GraphView(): JSX.Element {
       .linkLabel((l: GraphLink) => l.type);
 
     graphRef.current = Graph;
+    // Configure d3-force link distances/strengths with special handling for IN_FILE
+    const linkForce: any = Graph.d3Force && Graph.d3Force('link');
+    const canConfig = linkForce && typeof linkForce.distance === 'function' && typeof linkForce.strength === 'function';
+    if (canConfig) {
+      linkForce
+        .distance((l: any) => (l && l.type === 'IN_FILE' ? 14 : 60))
+        .strength((l: any) => (l && l.type === 'IN_FILE' ? 1.0 : 0.15));
+      console.log(JSON.stringify({
+        ts: new Date().toISOString(),
+        level: 'info',
+        event: 'd3force_configured',
+        distance_in_file: 14,
+        strength_in_file: 1.0,
+        distance_other: 60,
+        strength_other: 0.15
+      }));
+    } else {
+      console.log(JSON.stringify({
+        ts: new Date().toISOString(),
+        level: 'info',
+        event: 'd3force_config_skipped',
+        reason: 'linkForce not available'
+      }));
+    }
 
     const onResize = () => {
       const data: GraphData = Graph.graphData();
@@ -298,14 +340,90 @@ export default function GraphView(): JSX.Element {
           iterations: clientOptions.iterations,
           dampingFactor: clientOptions.dampingFactor
         });
-        Graph.graphData(decorated);
+        let finalData: any = decorated;
+        if (clusterByPath) {
+          const beforeNodes = decorated.nodes.length;
+          const beforeLinks = decorated.links.length;
+          const uniquePaths = new Set(decorated.nodes.filter((n) => typeof n.path === 'string' && (n.path as string).length > 0).map((n) => n.path as string)).size;
+          console.log(JSON.stringify({
+            ts: new Date().toISOString(),
+            level: 'info',
+            event: 'cluster_augment_start',
+            unique_paths: uniquePaths,
+            nodes_before: beforeNodes,
+            links_before: beforeLinks
+          }));
+          finalData = augmentWithFileClusters(decorated as any) as any;
+          // Compute File node _score as max of children, and sizes/labels by client formula
+          const idToNode = new Map<string, any>();
+          for (const n of finalData.nodes) idToNode.set(String(n.id), n);
+          const childrenByFile = new Map<string, string[]>();
+          for (const l of finalData.links) {
+            if (l.type === 'IN_FILE') {
+              const tgt = String(l.target);
+              const src = String(l.source);
+              const arr = childrenByFile.get(tgt) ?? [];
+              arr.push(src);
+              if (!childrenByFile.has(tgt)) childrenByFile.set(tgt, arr);
+            }
+          }
+          for (const n of finalData.nodes as any[]) {
+            if (n.label === 'File') {
+              const children = childrenByFile.get(String(n.id)) ?? [];
+              if (children.length === 0) continue;
+              const childScores: number[] = [];
+              for (const cid of children) {
+                const cn = idToNode.get(String(cid));
+                if (!cn || typeof cn._score !== 'number') {
+                  throw new Error('Missing _score on child node for File cluster computation.');
+                }
+                childScores.push(cn._score);
+              }
+              const maxScore = childScores.reduce((a, b) => (a > b ? a : b), -Infinity);
+              n._score = maxScore;
+              n._size = clientOptions.sizeMin + (clientOptions.sizeMax - clientOptions.sizeMin) * Math.pow(maxScore, clientOptions.exponent);
+              n._labelSize = clientOptions.labelMin + (clientOptions.labelMax - clientOptions.labelMin) * Math.pow(maxScore, clientOptions.exponent);
+            }
+          }
+          // Set _score for IN_FILE links as average of endpoints
+          for (const l of finalData.links as any[]) {
+            if (l.type === 'IN_FILE') {
+              const sNode = idToNode.get(String(l.source));
+              const tNode = idToNode.get(String(l.target));
+              if (!sNode || !tNode || typeof sNode._score !== 'number' || typeof tNode._score !== 'number') {
+                throw new Error('Cannot compute IN_FILE link score: endpoint scores missing.');
+              }
+              l._score = (sNode._score + tNode._score) / 2;
+            }
+          }
+          const afterNodes = finalData.nodes.length;
+          const afterLinks = finalData.links.length;
+          console.log(JSON.stringify({
+            ts: new Date().toISOString(),
+            level: 'info',
+            event: 'cluster_augment_finish',
+            nodes_after: afterNodes,
+            links_after: afterLinks,
+            added_nodes: afterNodes - beforeNodes,
+            added_links: afterLinks - beforeLinks
+          }));
+          console.log(JSON.stringify({
+            ts: new Date().toISOString(),
+            level: 'info',
+            event: 'cluster_augment_stats',
+            unique_paths: uniquePaths,
+            nodes_with_path: decorated.nodes.filter(n => typeof n.path === 'string' && (n.path as string).length > 0).length,
+            nodes_without_path: decorated.nodes.filter(n => !n.path || (typeof n.path === 'string' && (n.path as string).length === 0)).length
+          }));
+        }
+        Graph.graphData(finalData);
         console.log(JSON.stringify({
           ts: new Date().toISOString(),
           level: 'info',
           event: 'client_decorate_done',
           mode: 'client',
-          nodes: decorated.nodes.length,
-          links: decorated.links.length,
+          nodes: (finalData.nodes as any[]).length,
+          links: (finalData.links as any[]).length,
           duration_ms: Date.now() - t0
         }));
         // trigger zoom-to-fit on physics settle
@@ -319,7 +437,8 @@ export default function GraphView(): JSX.Element {
           };
           Graph.onEngineStop(stopHandler);
         })();
-        setStatus(`Loaded (client): ${decorated.nodes.length} nodes, ${decorated.links.length} links`);
+        const dGD = Graph.graphData() as GraphData;
+        setStatus(`Loaded (client): ${dGD.nodes.length} nodes, ${dGD.links.length} links`);
       } else if (mode === 'server') {
         // Apply client-side styling using server-provided metrics (no recompute, no fallbacks).
         const t0 = Date.now();
@@ -337,6 +456,7 @@ export default function GraphView(): JSX.Element {
         const clamp01 = (v: number) => (v < 0 ? 0 : v > 1 ? 1 : v);
         const { sizeMin, sizeMax, labelMin, labelMax, exponent } = clientOptions;
         const scoreById = new Map<string, number>();
+        // Style original nodes from server coreScore
         for (const n of (data as any).nodes as Array<any>) {
           if (!(typeof n.coreScore === 'number') || Number.isNaN(n.coreScore)) {
             throw new Error('Server-mode response missing coreScore; cannot style. No fallbacks.');
@@ -347,22 +467,100 @@ export default function GraphView(): JSX.Element {
           (n as any)._labelSize = labelMin + (labelMax - labelMin) * Math.pow(score, exponent);
           scoreById.set(String(n.id), score);
         }
-        for (const l of (data as any).links as Array<any>) {
-          const s1 = scoreById.get(String(l.source));
-          const s2 = scoreById.get(String(l.target));
-          if (s1 === undefined || s2 === undefined) {
-            throw new Error('Server-mode response contains link with unknown node id; cannot style.');
+        let finalDataServer: any = data;
+        if (clusterByPath) {
+          const beforeNodes = (data as any).nodes.length;
+          const beforeLinks = (data as any).links.length;
+          const uniquePaths = new Set((data as any).nodes.filter((n: any) => typeof n.path === 'string' && (n.path as string).length > 0).map((n: any) => n.path as string)).size;
+          console.log(JSON.stringify({
+            ts: new Date().toISOString(),
+            level: 'info',
+            event: 'cluster_augment_start',
+            unique_paths: uniquePaths,
+            nodes_before: beforeNodes,
+            links_before: beforeLinks
+          }));
+          finalDataServer = augmentWithFileClusters(data as any) as any;
+          // Compute File nodes _score = max(child _score), sizes by client formula
+          const idToNode = new Map<string, any>();
+          for (const n of finalDataServer.nodes) idToNode.set(String(n.id), n);
+          const childrenByFile = new Map<string, string[]>();
+          for (const l of finalDataServer.links) {
+            if (l.type === 'IN_FILE') {
+              const tgt = String(l.target);
+              const src = String(l.source);
+              const arr = childrenByFile.get(tgt) ?? [];
+              arr.push(src);
+              if (!childrenByFile.has(tgt)) childrenByFile.set(tgt, arr);
+            }
           }
-          (l as any)._score = (s1 + s2) / 2;
+          for (const n of finalDataServer.nodes as any[]) {
+            if (n.label === 'File') {
+              const children = childrenByFile.get(String(n.id)) ?? [];
+              if (children.length === 0) continue;
+              const childScores: number[] = [];
+              for (const cid of children) {
+                const s = scoreById.get(String(cid));
+                if (typeof s !== 'number') {
+                  throw new Error('Missing child score for File node aggregation in server mode.');
+                }
+                childScores.push(s);
+              }
+              const maxScore = childScores.reduce((a, b) => (a > b ? a : b), -Infinity);
+              n._score = maxScore;
+              n._size = sizeMin + (sizeMax - sizeMin) * Math.pow(maxScore, exponent);
+              n._labelSize = labelMin + (labelMax - labelMin) * Math.pow(maxScore, exponent);
+              // include in map for link score computation
+              scoreById.set(String(n.id), maxScore);
+            }
+          }
+          // Compute link _score as mean of endpoints, IN_FILE included
+          for (const l of finalDataServer.links as any[]) {
+            const s1 = scoreById.get(String(l.source));
+            const s2 = scoreById.get(String(l.target));
+            if (s1 === undefined || s2 === undefined) {
+              throw new Error('Server-mode: link references node without _score after augmentation.');
+            }
+            l._score = (s1 + s2) / 2;
+          }
+          const afterNodes = finalDataServer.nodes.length;
+          const afterLinks = finalDataServer.links.length;
+          console.log(JSON.stringify({
+            ts: new Date().toISOString(),
+            level: 'info',
+            event: 'cluster_augment_finish',
+            nodes_after: afterNodes,
+            links_after: afterLinks,
+            added_nodes: afterNodes - beforeNodes,
+            added_links: afterLinks - beforeLinks
+          }));
+          console.log(JSON.stringify({
+            ts: new Date().toISOString(),
+            level: 'info',
+            event: 'cluster_augment_stats',
+            unique_paths: uniquePaths,
+            nodes_with_path: (data as any).nodes.filter((n: any) => typeof n.path === 'string' && (n.path as string).length > 0).length,
+            nodes_without_path: (data as any).nodes.filter((n: any) => !n.path || (typeof n.path === 'string' && (n.path as string).length === 0)).length
+          }));
+        } else {
+          // For non-cluster mode, compute link scores as average of endpoints (original only)
+          for (const l of (data as any).links as Array<any>) {
+            const s1 = scoreById.get(String(l.source));
+            const s2 = scoreById.get(String(l.target));
+            if (s1 === undefined || s2 === undefined) {
+              throw new Error('Server-mode response contains link with unknown node id; cannot style.');
+            }
+            (l as any)._score = (s1 + s2) / 2;
+          }
         }
-        Graph.graphData(data);
+        Graph.graphData(finalDataServer);
         console.log(JSON.stringify({
           ts: new Date().toISOString(),
           level: 'info',
           event: 'client_style_from_server_done',
           mode: 'server',
-          nodes: (data as any).nodes.length,
-          links: (data as any).links.length,
+          nodes: (Graph.graphData() as any).nodes.length,
+          links: (Graph.graphData() as any).links.length,
           duration_ms: Date.now() - t0
         }));
         (function enableFrame() {
@@ -375,7 +573,8 @@ export default function GraphView(): JSX.Element {
           };
           Graph.onEngineStop(stopHandler);
         })();
-        setStatus(`Loaded (server): ${data.nodes.length} nodes, ${data.links.length} links`);
+        const dGD = Graph.graphData() as GraphData;
+        setStatus(`Loaded (server): ${dGD.nodes.length} nodes, ${dGD.links.length} links`);
       } else {
         throw new Error('Mode is not selected; cannot proceed.');
       }
@@ -557,6 +756,28 @@ export default function GraphView(): JSX.Element {
           >
             Re-center
           </Button>
+        </div>
+        <div style={{ gridColumn: 'span 3', display: 'flex', alignItems: 'center', gap: 8 }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <input
+              type="checkbox"
+              data-testid="checkbox-cluster-by-path"
+              checked={clusterByPath}
+              onChange={(e) => {
+                const enabled = e.target.checked;
+                setClusterByPath(enabled);
+                console.log(JSON.stringify({
+                  ts: new Date().toISOString(),
+                  level: 'info',
+                  event: 'cluster_toggle_changed',
+                  enabled,
+                  mode,
+                  collection
+                }));
+              }}
+            />
+            <span style={{ color: '#e5e7eb', fontSize: 12 }}>Cluster by file (path) — reload to apply</span>
+          </label>
         </div>
         <div style={{ gridColumn: 'span 9', fontSize: 12, opacity: 0.8 }}>
           {validationError ? `Validation: ${validationError}` : `${status} | Preload: ${preloadStatus}`}

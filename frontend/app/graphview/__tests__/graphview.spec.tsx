@@ -4,9 +4,22 @@ import GraphView from '../page';
 
 // Mock 3D graph and Three.js libs used by the component to avoid DOM/WebGL requirements
 jest.mock('3d-force-graph', () => {
-  return () => {
-    return (container: any) => {
+  const __mock = { instances: [] as any[] };
+  const factory = () => {
+    return (_container: any) => {
       let _data: any = { nodes: [], links: [] };
+      let _distanceFn: any = null;
+      let _strengthFn: any = null;
+      const linkForce = {
+        distance: (fn: any) => {
+          _distanceFn = fn;
+          return linkForce;
+        },
+        strength: (fn: any) => {
+          _strengthFn = fn;
+          return linkForce;
+        }
+      };
       const api: any = {
         backgroundColor: () => api,
         nodeRelSize: () => api,
@@ -17,6 +30,10 @@ jest.mock('3d-force-graph', () => {
         linkOpacity: () => api,
         linkWidth: () => api,
         linkLabel: () => api,
+        d3Force: (name?: string) => {
+          if (name === 'link') return linkForce;
+          return undefined;
+        },
         graphData: (d?: any) => {
           if (d !== undefined) {
             _data = d;
@@ -25,11 +42,15 @@ jest.mock('3d-force-graph', () => {
           return _data;
         },
         zoomToFit: () => {},
-        onEngineStop: () => {}
+        onEngineStop: (_?: any) => {}
       };
+      (api as any).__getLinkForceConfig = () => ({ distanceFn: _distanceFn, strengthFn: _strengthFn });
+      __mock.instances.push(api);
       return api;
     };
   };
+  (factory as any).__mock = __mock;
+  return factory;
 });
 
 jest.mock('three-spritetext', () => {
@@ -213,6 +234,94 @@ describe('GraphView component', () => {
 
     await waitFor(() => {
       expect(screen.getByText(/Loaded \(client\):/)).toBeTruthy();
+    });
+  });
+
+  test('cluster by path augments data and configures forces (server mode)', async () => {
+    window.history.pushState({}, '', '/graphview?collection=colX');
+    // First call: preload
+    const preload = { nodes: [], links: [] };
+    // Second call: server load with paths
+    const serverData = {
+      nodes: [
+        { id: 'n1', label: 'A', path: '/a/file1' },
+        { id: 'n2', label: 'B', path: '/a/file1' },
+        { id: 'n3', label: 'C' }, // no path
+        { id: 'n4', label: 'D', path: '/b/file2' }
+      ],
+      links: []
+    };
+    (global as any).fetch = jest.fn()
+      .mockResolvedValueOnce({ ok: true, status: 200, json: async () => preload } as Response)
+      .mockResolvedValueOnce({ ok: true, status: 200, json: async () => serverData } as Response);
+
+    render(<GraphView />);
+
+    const inputCollection = await screen.findByTestId('input-collection');
+    const selectMode = await screen.findByTestId('select-mode');
+    const inputSeeds = await screen.findByTestId('input-seeds');
+    const checkboxCluster = await screen.findByTestId('checkbox-cluster-by-path');
+    const btnLoad = await screen.findByTestId('btn-load');
+    const graphContainer = await screen.findByTestId('graph-container');
+
+    expect(inputCollection).toBeTruthy();
+    expect(selectMode).toBeTruthy();
+    expect(inputSeeds).toBeTruthy();
+    expect(checkboxCluster).toBeTruthy();
+    expect(btnLoad).toBeTruthy();
+    expect(graphContainer).toBeTruthy();
+
+    // Fill params: server mode, seeds, enable cluster
+    fireEvent.change(selectMode, { target: { value: 'server' } });
+    fireEvent.change(inputCollection, { target: { value: 'mycol' } });
+    fireEvent.change(inputSeeds, { target: { value: 'n1' } });
+    fireEvent.click(checkboxCluster);
+    fireEvent.click(btnLoad);
+
+    // Access ForceGraph instance mock
+    const FGFactory: any = require('3d-force-graph');
+    const instances = FGFactory.__mock.instances;
+    expect(instances.length).toBeGreaterThan(0);
+    const instance = instances[0];
+
+    await waitFor(() => {
+      const data = instance.graphData();
+      expect(Array.isArray(data?.nodes)).toBe(true);
+      // Unique paths: /a/file1, /b/file2 => 2 File nodes
+      // IN_FILE links: for n1,n2,n4 => 3 links
+      // Total nodes: 4 + 2 = 6
+      // Total links: 0 + 3 = 3
+      expect(data.nodes.length).toBe(6);
+      expect(data.links.length).toBe(3);
+      const fileNodeIds = data.nodes.filter((n: any) => n.label === 'File').map((n: any) => n.id);
+      expect(fileNodeIds).toEqual(expect.arrayContaining(['file::/a/file1', 'file::/b/file2']));
+      const inFileLinks = data.links.filter((l: any) => l.type === 'IN_FILE');
+      expect(inFileLinks.length).toBe(3);
+      const expectedPairs = new Set([
+        'n1|file::/a/file1',
+        'n2|file::/a/file1',
+        'n4|file::/b/file2'
+      ]);
+      for (const l of inFileLinks) {
+        expect(expectedPairs.has(`${l.source}|${l.target}`)).toBe(true);
+      }
+    });
+
+    // Verify forces configured
+    const lf = instance.__getLinkForceConfig();
+    expect(typeof lf.distanceFn).toBe('function');
+    expect(typeof lf.strengthFn).toBe('function');
+    expect(lf.distanceFn({ type: 'IN_FILE' })).toBe(14);
+    expect(lf.distanceFn({ type: 'OTHER' })).toBe(60);
+    expect(lf.strengthFn({ type: 'IN_FILE' })).toBe(1.0);
+    expect(lf.strengthFn({ type: 'OTHER' })).toBe(0.15);
+
+    // Optional: status text alignment with Graph.graphData()
+    await waitFor(() => {
+      const data = instance.graphData();
+      const statusOk =
+        screen.getByText(new RegExp(`Loaded \\(server\\): ${data.nodes.length} nodes, ${data.links.length} links`));
+      expect(statusOk).toBeTruthy();
     });
   });
 })

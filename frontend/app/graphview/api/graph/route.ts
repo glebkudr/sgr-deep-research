@@ -53,9 +53,11 @@ type GraphRow = {
   sid: string; // stringified neo4j id
   slabel: string;
   sTitle?: string | null;
+  sPath?: string | null;
   tid: string; // stringified neo4j id
   tlabel: string;
   tTitle?: string | null;
+  tPath?: string | null;
   rel: string;
 };
 
@@ -225,14 +227,16 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
       "MATCH (s)-[r]->(t)",
       "RETURN id(s) AS source, id(t) AS target, type(r) AS type",
     ].join("\n");
+    // Note: resultRowsCypher must return s.path/t.path in BOTH branches to populate node.path in server mode.
+    // Do not coalesce path; undefined/null from Neo4j is acceptable per strict policy.
     const resultRowsCypher = (withTypeFilter
       ? [
           "MATCH ()-[r]->()",
           "WHERE r.collection = $collection AND type(r) IN $rels",
           "WITH r LIMIT $limit",
           "MATCH (s)-[r]->(t)",
-          "RETURN toString(id(s)) AS sid, labels(s)[0] AS slabel, coalesce(s.name,s.title,s.qualified_name) AS sTitle,",
-          "       toString(id(t)) AS tid, labels(t)[0] AS tlabel, coalesce(t.name,t.title,t.qualified_name) AS tTitle,",
+          "RETURN toString(id(s)) AS sid, labels(s)[0] AS slabel, coalesce(s.name,s.title,s.qualified_name) AS sTitle, s.path AS sPath,",
+          "       toString(id(t)) AS tid, labels(t)[0] AS tlabel, coalesce(t.name,t.title,t.qualified_name) AS tTitle, t.path AS tPath,",
           "       type(r) AS rel",
         ]
       : [
@@ -240,8 +244,8 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
           "WHERE r.collection = $collection",
           "WITH r LIMIT $limit",
           "MATCH (s)-[r]->(t)",
-          "RETURN toString(id(s)) AS sid, labels(s)[0] AS slabel, coalesce(s.name,s.title,s.qualified_name) AS sTitle,",
-          "       toString(id(t)) AS tid, labels(t)[0] AS tlabel, coalesce(t.name,t.title,t.qualified_name) AS tTitle,",
+          "RETURN toString(id(s)) AS sid, labels(s)[0] AS slabel, coalesce(s.name,s.title,s.qualified_name) AS sTitle, s.path AS sPath,",
+          "       toString(id(t)) AS tid, labels(t)[0] AS tlabel, coalesce(t.name,t.title,t.qualified_name) AS tTitle, t.path AS tPath,",
           "       type(r) AS rel",
         ]).join("\n");
 
@@ -311,23 +315,25 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
         rels: withTypeFilter ? rels : undefined,
         limit: neo4j.int(limit),
       });
-      const nodesMap = new Map<string, { id: string; label: string; title?: string }>();
+      const nodesMap = new Map<string, { id: string; label: string; title?: string; path?: string }>();
       const links: { source: string; target: string; type: string }[] = [];
       for (const record of baseRows.records) {
         const row: GraphRow = {
           sid: record.get("sid") as string,
           slabel: record.get("slabel") as string,
           sTitle: (record.get("sTitle") as string | null) ?? null,
+          sPath: (record.get("sPath") as string | null) ?? null,
           tid: record.get("tid") as string,
           tlabel: record.get("tlabel") as string,
           tTitle: (record.get("tTitle") as string | null) ?? null,
+          tPath: (record.get("tPath") as string | null) ?? null,
           rel: record.get("rel") as string,
         };
         if (!nodesMap.has(row.sid)) {
-          nodesMap.set(row.sid, { id: row.sid, label: row.slabel, title: row.sTitle ?? undefined });
+          nodesMap.set(row.sid, { id: row.sid, label: row.slabel, title: row.sTitle ?? undefined, path: row.sPath ?? undefined });
         }
         if (!nodesMap.has(row.tid)) {
-          nodesMap.set(row.tid, { id: row.tid, label: row.tlabel, title: row.tTitle ?? undefined });
+          nodesMap.set(row.tid, { id: row.tid, label: row.tlabel, title: row.tTitle ?? undefined, path: row.tPath ?? undefined });
         }
         links.push({ source: row.sid, target: row.tid, type: row.rel });
       }
@@ -469,6 +475,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
           id: n.id,
           label: n.label,
           title: n.title,
+          path: n.path,
           ppr: pprRaw,
           deg: degRaw,
           dist: Number.isFinite(dist) ? dist : null,
@@ -540,8 +547,8 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
         "WHERE r.collection = $collection AND type(r) IN $rels",
         "WITH r LIMIT $limit",
         "MATCH (s)-[r]->(t)",
-        "RETURN toString(id(s)) AS sid, labels(s)[0] AS slabel, coalesce(s.name,s.title,s.qualified_name) AS sTitle,",
-        "       toString(id(t)) AS tid, labels(t)[0] AS tlabel, coalesce(t.name,t.title,t.qualified_name) AS tTitle,",
+        "RETURN toString(id(s)) AS sid, labels(s)[0] AS slabel, coalesce(s.name,s.title,s.qualified_name) AS sTitle, s.path AS sPath,",
+        "       toString(id(t)) AS tid, labels(t)[0] AS tlabel, coalesce(t.name,t.title,t.qualified_name) AS tTitle, t.path AS tPath,",
         "       type(r) AS rel",
       ].join("\n")
     : [
@@ -549,8 +556,8 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
         "WHERE r.collection = $collection",
         "WITH r LIMIT $limit",
         "MATCH (s)-[r]->(t)",
-        "RETURN toString(id(s)) AS sid, labels(s)[0] AS slabel, coalesce(s.name,s.title,s.qualified_name) AS sTitle,",
-        "       toString(id(t)) AS tid, labels(t)[0] AS tlabel, coalesce(t.name,t.title,t.qualified_name) AS tTitle,",
+        "RETURN toString(id(s)) AS sid, labels(s)[0] AS slabel, coalesce(s.name,s.title,s.qualified_name) AS sTitle, s.path AS sPath,",
+        "       toString(id(t)) AS tid, labels(t)[0] AS tlabel, coalesce(t.name,t.title,t.qualified_name) AS tTitle, t.path AS tPath,",
         "       type(r) AS rel",
       ].join("\n");
 
@@ -581,7 +588,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
       rels: withTypeFilter ? rels : undefined,
     });
 
-    const nodesMap = new Map<string, { id: string; label: string; title?: string }>();
+    const nodesMap = new Map<string, { id: string; label: string; title?: string; path?: string }>();
     const links: { source: string; target: string; type: string }[] = [];
 
     for (const record of result.records) {
@@ -589,16 +596,18 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
         sid: record.get("sid") as string,
         slabel: record.get("slabel") as string,
         sTitle: (record.get("sTitle") as string | null) ?? null,
+        sPath: (record.get("sPath") as string | null) ?? null,
         tid: record.get("tid") as string,
         tlabel: record.get("tlabel") as string,
         tTitle: (record.get("tTitle") as string | null) ?? null,
+        tPath: (record.get("tPath") as string | null) ?? null,
         rel: record.get("rel") as string,
       };
       if (!nodesMap.has(row.sid)) {
-        nodesMap.set(row.sid, { id: row.sid, label: row.slabel, title: row.sTitle ?? undefined });
+        nodesMap.set(row.sid, { id: row.sid, label: row.slabel, title: row.sTitle ?? undefined, path: row.sPath ?? undefined });
       }
       if (!nodesMap.has(row.tid)) {
-        nodesMap.set(row.tid, { id: row.tid, label: row.tlabel, title: row.tTitle ?? undefined });
+        nodesMap.set(row.tid, { id: row.tid, label: row.tlabel, title: row.tTitle ?? undefined, path: row.tPath ?? undefined });
       }
       links.push({ source: row.sid, target: row.tid, type: row.rel });
     }
