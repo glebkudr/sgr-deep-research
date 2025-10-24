@@ -207,9 +207,51 @@ export default function GraphView(): JSX.Element {
           Graph.onEngineStop(stopHandler);
         })();
         setStatus(`Loaded (client): ${decorated.nodes.length} nodes, ${decorated.links.length} links`);
-      } else {
-        // server or unspecified mode: show raw data (no fallbacks to client)
+      } else if (mode === 'server') {
+        // Apply client-side styling using server-provided metrics (no recompute, no fallbacks).
+        const t0 = Date.now();
+        console.log(JSON.stringify({
+          ts: new Date().toISOString(),
+          level: 'info',
+          event: 'client_style_from_server_start',
+          mode: 'server',
+          nodes: Array.isArray((data as any).nodes) ? (data as any).nodes.length : 0,
+          links: Array.isArray((data as any).links) ? (data as any).links.length : 0
+        }));
+        if (!data || !Array.isArray((data as any).nodes) || !Array.isArray((data as any).links)) {
+          throw new Error('Invalid server response shape: nodes/links missing');
+        }
+        const clamp01 = (v: number) => (v < 0 ? 0 : v > 1 ? 1 : v);
+        const { sizeMin, sizeMax, labelMin, labelMax, exponent } = clientOptions;
+        const scoreById = new Map<string, number>();
+        for (const n of (data as any).nodes as Array<any>) {
+          if (!(typeof n.coreScore === 'number') || Number.isNaN(n.coreScore)) {
+            throw new Error('Server-mode response missing coreScore; cannot style. No fallbacks.');
+          }
+          const score = clamp01(n.coreScore);
+          n._score = score;
+          n._size = sizeMin + (sizeMax - sizeMin) * Math.pow(score, exponent);
+          n._labelSize = labelMin + (labelMax - labelMin) * Math.pow(score, exponent);
+          scoreById.set(String(n.id), score);
+        }
+        for (const l of (data as any).links as Array<any>) {
+          const s1 = scoreById.get(String(l.source));
+          const s2 = scoreById.get(String(l.target));
+          if (s1 === undefined || s2 === undefined) {
+            throw new Error('Server-mode response contains link with unknown node id; cannot style.');
+          }
+          l._score = (s1 + s2) / 2;
+        }
         Graph.graphData(data);
+        console.log(JSON.stringify({
+          ts: new Date().toISOString(),
+          level: 'info',
+          event: 'client_style_from_server_done',
+          mode: 'server',
+          nodes: (data as any).nodes.length,
+          links: (data as any).links.length,
+          duration_ms: Date.now() - t0
+        }));
         (function enableFrame() {
           let armed = true;
           const stopHandler = () => {
@@ -220,7 +262,9 @@ export default function GraphView(): JSX.Element {
           };
           Graph.onEngineStop(stopHandler);
         })();
-        setStatus(`Loaded: ${data.nodes.length} nodes, ${data.links.length} links`);
+        setStatus(`Loaded (server): ${data.nodes.length} nodes, ${data.links.length} links`);
+      } else {
+        throw new Error('Mode is not selected; cannot proceed.');
       }
     } catch (e) {
       console.error(JSON.stringify({
