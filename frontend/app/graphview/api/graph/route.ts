@@ -233,8 +233,8 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
           "WHERE r.collection = $collection AND type(r) IN $rels",
           "WITH r LIMIT $limit",
           "MATCH (s)-[r]->(t)",
-          "RETURN toString(id(s)) AS sid, labels(s)[0] AS slabel, coalesce(s.name,s.title,s.qualified_name) AS sTitle,",
-          "       toString(id(t)) AS tid, labels(t)[0] AS tlabel, coalesce(t.name,t.title,t.qualified_name) AS tTitle,",
+          "RETURN toString(id(s)) AS sid, labels(s)[0] AS slabel, coalesce(s.name,s.title,s.qualified_name) AS sTitle, s.path AS sPath,",
+          "       toString(id(t)) AS tid, labels(t)[0] AS tlabel, coalesce(t.name,t.title,t.qualified_name) AS tTitle, t.path AS tPath,",
           "       type(r) AS rel",
         ]
       : [
@@ -473,7 +473,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
           id: n.id,
           label: n.label,
           title: n.title,
-          path: (n as any).path,
+          path: n.path,
           ppr: pprRaw,
           deg: degRaw,
           dist: Number.isFinite(dist) ? dist : null,
