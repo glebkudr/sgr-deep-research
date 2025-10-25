@@ -3,7 +3,6 @@ import { useEffect, useRef, useState } from 'react';
 import SpriteText from 'three-spritetext';
 import ForceGraph3D from '3d-force-graph';
 import { Group, Mesh, SphereGeometry, MeshBasicMaterial, Color, type Object3D } from 'three';
-import { decorateGraphData, type DecoratedGraphData } from './decorateGraphData';
 import { decorateGraphDataSeedless, type DecoratedGraphData as DecoratedGraphDataSeedless } from './decorateGraphDataSeedless';
 import { augmentWithFileClusters } from './clusterGraphData';
 import { Input } from '@/components/ui/Input';

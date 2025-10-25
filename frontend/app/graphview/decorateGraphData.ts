@@ -1,3 +1,4 @@
+/**
 export type Node = { id: string; label?: string; title?: string; path?: string };
 export type Link = { source: string; target: string; type?: string };
 export type GraphData = { nodes: Node[]; links: Link[] };
@@ -243,3 +244,4 @@ export function decorateGraphData(data: GraphData, options: Options): DecoratedG
   }));
   return decorated;
 }
+**/
