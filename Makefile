@@ -47,6 +47,9 @@ config-dev:
 up-dev: config-dev
 	$(COMPOSE) $(COMPOSE_DEV_FLAGS) up --build
 
+build-nocache: config-dev
+	$(COMPOSE) $(COMPOSE_DEV_FLAGS) build --no-cache
+
 down-dev:
 	$(COMPOSE) $(COMPOSE_DEV_FLAGS) down
 
