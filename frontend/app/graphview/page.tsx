@@ -8,6 +8,7 @@ import { augmentWithFileClusters } from './clusterGraphData';
 import { Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
 import { Button } from '@/components/ui/Button';
+import { buildNodeLabel } from './labelUtils';
 
 type GraphNode = { id: string; label: string; title?: string; path?: string };
 type GraphLink = { source: string; target: string; type: string };
@@ -161,11 +162,7 @@ export default function GraphView(): JSX.Element {
     const Graph = ForceGraph3D()(containerRef.current)
       .backgroundColor('#0f172a')
       .nodeRelSize(6)
-      .nodeLabel((n: GraphNode & { _score?: number }) => {
-        const base = `${n.label}${n.title ? ': ' + n.title : ''}`;
-        const sc = typeof (n as any)._score === 'number' ? ` | score: ${(n as any)._score.toFixed(2)}` : '';
-        return base + sc;
-      })
+      .nodeLabel((n: GraphNode & { _score?: number }) => buildNodeLabel(n))
       .nodeThreeObjectExtend(false)
       .nodeThreeObject((node: GraphNode & { _score?: number; _size?: number; _labelSize?: number }) => {
         const score = typeof (node as any)._score === 'number' ? (node as any)._score : 0;

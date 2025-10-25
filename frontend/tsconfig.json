@@ -18,7 +18,8 @@
     "jsx": "preserve",
     "incremental": true,
     "types": [
-      "node"
+      "node",
+      "jest"
     ],
     "baseUrl": ".",
     "paths": {
@@ -36,7 +37,9 @@
     "next-env.d.ts",
     "**/*.ts",
     "**/*.tsx",
-    ".next/types/**/*.ts"
+    ".next/types/**/*.ts",
+    "app/graphview/__tests__/**/*.ts",
+    "types/**/*.d.ts"
   ],
   "exclude": [
     "node_modules"
