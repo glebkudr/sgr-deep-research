@@ -38,7 +38,8 @@ export default function GraphView(): JSX.Element {
     labelMin: 6,
     labelMax: 18,
     iterations: 20,
-    dampingFactor: 0.85
+    dampingFactor: 0.85,
+    nodeOpacity: 0.7
   });
 
   useEffect(() => {
@@ -54,6 +55,12 @@ export default function GraphView(): JSX.Element {
     const qsSeeds = params.get('seeds') || '';
     if (qsSeeds) setSeedsCsv(qsSeeds);
   }, []);
+
+  // Keep node opacity reactive inside nodeThreeObject without re-instantiating the graph
+  const nodeOpacityRef = useRef<number>(0.7);
+  useEffect(() => {
+    nodeOpacityRef.current = clientOptions.nodeOpacity;
+  }, [clientOptions.nodeOpacity]);
 
   // Background preload of subgraph on collection/rels/limit change.
   useEffect(() => {
@@ -160,7 +167,7 @@ export default function GraphView(): JSX.Element {
         const sc = typeof (n as any)._score === 'number' ? ` | score: ${(n as any)._score.toFixed(2)}` : '';
         return base + sc;
       })
-      .nodeThreeObjectExtend(true)
+      .nodeThreeObjectExtend(false)
       .nodeThreeObject((node: GraphNode & { _score?: number; _size?: number; _labelSize?: number }) => {
         const score = typeof (node as any)._score === 'number' ? (node as any)._score : 0;
         const size = typeof (node as any)._size === 'number' ? (node as any)._size : 6;
@@ -175,7 +182,7 @@ export default function GraphView(): JSX.Element {
           // HSL mapping: from blue-ish to red-ish, increasing lightness with score
           color.setHSL(0.6 - 0.6 * score, 0.7, 0.35 + 0.45 * score);
         }
-        const mat = new MeshBasicMaterial({ color });
+        const mat = new MeshBasicMaterial({ color, transparent: true, opacity: nodeOpacityRef.current });
         const mesh = new Mesh(geom, mat);
         group.add(mesh);
         const sprite = new SpriteText(node.title || node.label);
@@ -539,6 +546,16 @@ export default function GraphView(): JSX.Element {
             step={0.01}
             value={clientOptions.dampingFactor}
             onChange={(e) => setClientOptions((o) => ({ ...o, dampingFactor: Number(e.target.value) }))}
+          />
+          <Input
+            label={`node opacity (${clientOptions.nodeOpacity.toFixed(2)})`}
+            data-testid="slider-node-opacity"
+            type="range"
+            min={0.1}
+            max={1}
+            step={0.05}
+            value={clientOptions.nodeOpacity}
+            onChange={(e) => setClientOptions((o) => ({ ...o, nodeOpacity: Number(e.target.value) }))}
           />
         </div>
         <div style={{ gridColumn: 'span 3', display: 'flex', gap: 8 }}>
