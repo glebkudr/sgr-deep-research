@@ -4,6 +4,7 @@ import SpriteText from 'three-spritetext';
 import ForceGraph3D from '3d-force-graph';
 import { Group, Mesh, SphereGeometry, MeshBasicMaterial, Color, type Object3D } from 'three';
 import { decorateGraphData, type DecoratedGraphData } from './decorateGraphData';
+import { decorateGraphDataSeedless, type DecoratedGraphData as DecoratedGraphDataSeedless } from './decorateGraphDataSeedless';
 import { augmentWithFileClusters } from './clusterGraphData';
 import { Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
@@ -20,16 +21,16 @@ export default function GraphView(): JSX.Element {
   const [collection, setCollection] = useState<string>('');
   const [rels, setRels] = useState<string>('');
   const [limit, setLimit] = useState<number>(2000);
-  const [mode, setMode] = useState<'client' | 'server' | ''>('');
+  const [mode, setMode] = useState<'global'>('global');
   const [seedsCsv, setSeedsCsv] = useState<string>('');
   const [preloadStatus, setPreloadStatus] = useState<string>('Idle');
   const [preloadNodes, setPreloadNodes] = useState<GraphNode[] | null>(null);
   const [clusterByPath, setClusterByPath] = useState<boolean>(false);
   // Explicit options (no silent defaults) - controlled by UI
   const [clientOptions, setClientOptions] = useState({
-    alpha: 0.6,
-    beta: 0.3,
-    gamma: 0.1,
+    alpha: 0.2,
+    beta: 0.05,
+    gamma: 0.2,
     lambda: 0.8,
     exponent: 1.0,
     sizeMin: 3,
@@ -45,11 +46,10 @@ export default function GraphView(): JSX.Element {
     const qsCol = params.get('collection') || '';
     if (qsCol) setCollection(qsCol);
     const qsMode = (params.get('mode') || '').trim().toLowerCase();
-    if (qsMode === 'client' || qsMode === 'server') {
-      setMode(qsMode as 'client' | 'server');
+    if (qsMode === 'global') {
+      setMode('global');
     } else {
-      // Default to client mode if not specified in URL
-      setMode('client');
+      setMode('global');
     }
     const qsSeeds = params.get('seeds') || '';
     if (qsSeeds) setSeedsCsv(qsSeeds);
@@ -237,58 +237,13 @@ export default function GraphView(): JSX.Element {
     const r = (rels || '').trim();
     if (r) params.set('rels', r);
     if (Number.isFinite(limit)) params.set('limit', String(limit));
-    if (mode === 'server') {
-      params.set('mode', 'server');
-      const seeds = (seedsCsv || '').split(',').map(s => s.trim()).filter(Boolean);
-      if (seeds.length === 0) return null;
-      params.set('seeds', seeds.join(','));
-      params.set('alpha', String(clientOptions.alpha));
-      params.set('beta', String(clientOptions.beta));
-      params.set('gamma', String(clientOptions.gamma));
-      params.set('lambda', String(clientOptions.lambda));
-      params.set('exponent', String(clientOptions.exponent));
-    }
+    // global mode does not require extra params
     return `/graphview/api/graph?${params.toString()}`;
   }
 
   async function loadGraph(): Promise<void> {
     try {
-      // Establish effective seeds snapshot to avoid race with setState
-      let effectiveSeedsCsv = seedsCsv;
-      // Fail fast behavior for client mode when seeds are not yet selected and no preload is available
-      if (mode === 'client') {
-        const currentSeeds = (effectiveSeedsCsv || '').split(',').map(s => s.trim()).filter(Boolean);
-        const hasSeeds = currentSeeds.length > 0;
-        const hasPreload = Array.isArray(preloadNodes) && preloadNodes.length > 0;
-        if (!hasSeeds && !hasPreload) {
-          console.error(JSON.stringify({
-            ts: new Date().toISOString(),
-            level: 'error',
-            event: 'client_missing_seeds_logged',
-            mode,
-            collection,
-            rels,
-            limit
-          }));
-          setStatus('Error: Missing seeds for client mode');
-          return;
-        }
-        // If preload exists but seeds are still empty (race), auto-pick one now to avoid empty-seed compute.
-        if (!hasSeeds && hasPreload) {
-          const pick = preloadNodes![Math.floor(Math.random() * preloadNodes!.length)];
-          const picked = String(pick.id);
-          console.log(JSON.stringify({
-            ts: new Date().toISOString(),
-            level: 'info',
-            event: 'auto_seed_selected_on_load',
-            collection,
-            seed: picked,
-            preload_nodes: preloadNodes!.length
-          }));
-          effectiveSeedsCsv = picked;
-          setSeedsCsv(effectiveSeedsCsv);
-        }
-      }
+      // global-only mode; no seeds handling
       const apiUrl = buildUrl();
       if (!apiUrl) {
         setStatus('Provide valid params');
@@ -303,35 +258,27 @@ export default function GraphView(): JSX.Element {
       const data: GraphData = await res.json();
       const Graph = graphRef.current;
       if (!Graph) return;
-      if (mode === 'client') {
-        // Use effective snapshot including possible auto-pick on load
-        const seeds = new Set((effectiveSeedsCsv || '').split(',').map(s => s.trim()).filter(Boolean));
-        if (seeds.size === 0) {
-          throw new Error('Client mode requires seeds for local compute; none provided.');
-        }
+      {
         const t0 = Date.now();
         console.log(JSON.stringify({
           ts: new Date().toISOString(),
           level: 'info',
-          event: 'client_compute_start',
-          mode: 'client',
-          nodes: data.nodes.length,
-          links: data.links.length,
-          seeds_count: seeds.size,
+          event: 'seedless_style_start',
+          mode: 'global',
+          nodes: (data as any)?.nodes?.length ?? 0,
+          links: (data as any)?.links?.length ?? 0,
           alpha: clientOptions.alpha,
           beta: clientOptions.beta,
           gamma: clientOptions.gamma,
-          lambda: clientOptions.lambda,
           exponent: clientOptions.exponent,
           iterations: clientOptions.iterations,
           dampingFactor: clientOptions.dampingFactor
         }));
-        const decorated: DecoratedGraphData = decorateGraphData(data, {
-          seeds,
+
+        const decorated: DecoratedGraphDataSeedless = decorateGraphDataSeedless(data, {
           alpha: clientOptions.alpha,
           beta: clientOptions.beta,
           gamma: clientOptions.gamma,
-          lambda: clientOptions.lambda,
           exponent: clientOptions.exponent,
           sizeMin: clientOptions.sizeMin,
           sizeMax: clientOptions.sizeMax,
@@ -340,11 +287,16 @@ export default function GraphView(): JSX.Element {
           iterations: clientOptions.iterations,
           dampingFactor: clientOptions.dampingFactor
         });
+
         let finalData: any = decorated;
         if (clusterByPath) {
           const beforeNodes = decorated.nodes.length;
           const beforeLinks = decorated.links.length;
-          const uniquePaths = new Set(decorated.nodes.filter((n) => typeof n.path === 'string' && (n.path as string).length > 0).map((n) => n.path as string)).size;
+          const uniquePaths = new Set(
+            data.nodes
+              .filter((n) => typeof n.path === 'string' && (n.path as string).length > 0)
+              .map((n) => n.path as string)
+          ).size;
           console.log(JSON.stringify({
             ts: new Date().toISOString(),
             level: 'info',
@@ -354,7 +306,7 @@ export default function GraphView(): JSX.Element {
             links_before: beforeLinks
           }));
           finalData = augmentWithFileClusters(decorated as any) as any;
-          // Compute File node _score as max of children, and sizes/labels by client formula
+
           const idToNode = new Map<string, any>();
           for (const n of finalData.nodes) idToNode.set(String(n.id), n);
           const childrenByFile = new Map<string, string[]>();
@@ -412,21 +364,21 @@ export default function GraphView(): JSX.Element {
             level: 'info',
             event: 'cluster_augment_stats',
             unique_paths: uniquePaths,
-            nodes_with_path: decorated.nodes.filter(n => typeof n.path === 'string' && (n.path as string).length > 0).length,
-            nodes_without_path: decorated.nodes.filter(n => !n.path || (typeof n.path === 'string' && (n.path as string).length === 0)).length
+            nodes_with_path: data.nodes.filter(n => typeof n.path === 'string' && (n.path as string).length > 0).length,
+            nodes_without_path: data.nodes.filter(n => !n.path || (typeof n.path === 'string' && (n.path as string).length === 0)).length
           }));
         }
+
         Graph.graphData(finalData);
         console.log(JSON.stringify({
           ts: new Date().toISOString(),
           level: 'info',
-          event: 'client_decorate_done',
-          mode: 'client',
+          event: 'seedless_style_done',
+          mode: 'global',
           nodes: (finalData.nodes as any[]).length,
           links: (finalData.links as any[]).length,
           duration_ms: Date.now() - t0
         }));
-        // trigger zoom-to-fit on physics settle
         (function enableFrame() {
           let armed = true;
           const stopHandler = () => {
@@ -438,145 +390,7 @@ export default function GraphView(): JSX.Element {
           Graph.onEngineStop(stopHandler);
         })();
         const dGD = Graph.graphData() as GraphData;
-        setStatus(`Loaded (client): ${dGD.nodes.length} nodes, ${dGD.links.length} links`);
-      } else if (mode === 'server') {
-        // Apply client-side styling using server-provided metrics (no recompute, no fallbacks).
-        const t0 = Date.now();
-        console.log(JSON.stringify({
-          ts: new Date().toISOString(),
-          level: 'info',
-          event: 'client_style_from_server_start',
-          mode: 'server',
-          nodes: Array.isArray((data as any).nodes) ? (data as any).nodes.length : 0,
-          links: Array.isArray((data as any).links) ? (data as any).links.length : 0
-        }));
-        if (!data || !Array.isArray((data as any).nodes) || !Array.isArray((data as any).links)) {
-          throw new Error('Invalid server response shape: nodes/links missing');
-        }
-        const clamp01 = (v: number) => (v < 0 ? 0 : v > 1 ? 1 : v);
-        const { sizeMin, sizeMax, labelMin, labelMax, exponent } = clientOptions;
-        const scoreById = new Map<string, number>();
-        // Style original nodes from server coreScore
-        for (const n of (data as any).nodes as Array<any>) {
-          if (!(typeof n.coreScore === 'number') || Number.isNaN(n.coreScore)) {
-            throw new Error('Server-mode response missing coreScore; cannot style. No fallbacks.');
-          }
-          const score = clamp01(n.coreScore);
-          (n as any)._score = score;
-          (n as any)._size = sizeMin + (sizeMax - sizeMin) * Math.pow(score, exponent);
-          (n as any)._labelSize = labelMin + (labelMax - labelMin) * Math.pow(score, exponent);
-          scoreById.set(String(n.id), score);
-        }
-        let finalDataServer: any = data;
-        if (clusterByPath) {
-          const beforeNodes = (data as any).nodes.length;
-          const beforeLinks = (data as any).links.length;
-          const uniquePaths = new Set((data as any).nodes.filter((n: any) => typeof n.path === 'string' && (n.path as string).length > 0).map((n: any) => n.path as string)).size;
-          console.log(JSON.stringify({
-            ts: new Date().toISOString(),
-            level: 'info',
-            event: 'cluster_augment_start',
-            unique_paths: uniquePaths,
-            nodes_before: beforeNodes,
-            links_before: beforeLinks
-          }));
-          finalDataServer = augmentWithFileClusters(data as any) as any;
-          // Compute File nodes _score = max(child _score), sizes by client formula
-          const idToNode = new Map<string, any>();
-          for (const n of finalDataServer.nodes) idToNode.set(String(n.id), n);
-          const childrenByFile = new Map<string, string[]>();
-          for (const l of finalDataServer.links) {
-            if (l.type === 'IN_FILE') {
-              const tgt = String(l.target);
-              const src = String(l.source);
-              const arr = childrenByFile.get(tgt) ?? [];
-              arr.push(src);
-              if (!childrenByFile.has(tgt)) childrenByFile.set(tgt, arr);
-            }
-          }
-          for (const n of finalDataServer.nodes as any[]) {
-            if (n.label === 'File') {
-              const children = childrenByFile.get(String(n.id)) ?? [];
-              if (children.length === 0) continue;
-              const childScores: number[] = [];
-              for (const cid of children) {
-                const s = scoreById.get(String(cid));
-                if (typeof s !== 'number') {
-                  throw new Error('Missing child score for File node aggregation in server mode.');
-                }
-                childScores.push(s);
-              }
-              const maxScore = childScores.reduce((a, b) => (a > b ? a : b), -Infinity);
-              n._score = maxScore;
-              n._size = sizeMin + (sizeMax - sizeMin) * Math.pow(maxScore, exponent);
-              n._labelSize = labelMin + (labelMax - labelMin) * Math.pow(maxScore, exponent);
-              // include in map for link score computation
-              scoreById.set(String(n.id), maxScore);
-            }
-          }
-          // Compute link _score as mean of endpoints, IN_FILE included
-          for (const l of finalDataServer.links as any[]) {
-            const s1 = scoreById.get(String(l.source));
-            const s2 = scoreById.get(String(l.target));
-            if (s1 === undefined || s2 === undefined) {
-              throw new Error('Server-mode: link references node without _score after augmentation.');
-            }
-            l._score = (s1 + s2) / 2;
-          }
-          const afterNodes = finalDataServer.nodes.length;
-          const afterLinks = finalDataServer.links.length;
-          console.log(JSON.stringify({
-            ts: new Date().toISOString(),
-            level: 'info',
-            event: 'cluster_augment_finish',
-            nodes_after: afterNodes,
-            links_after: afterLinks,
-            added_nodes: afterNodes - beforeNodes,
-            added_links: afterLinks - beforeLinks
-          }));
-          console.log(JSON.stringify({
-            ts: new Date().toISOString(),
-            level: 'info',
-            event: 'cluster_augment_stats',
-            unique_paths: uniquePaths,
-            nodes_with_path: (data as any).nodes.filter((n: any) => typeof n.path === 'string' && (n.path as string).length > 0).length,
-            nodes_without_path: (data as any).nodes.filter((n: any) => !n.path || (typeof n.path === 'string' && (n.path as string).length === 0)).length
-          }));
-        } else {
-          // For non-cluster mode, compute link scores as average of endpoints (original only)
-          for (const l of (data as any).links as Array<any>) {
-            const s1 = scoreById.get(String(l.source));
-            const s2 = scoreById.get(String(l.target));
-            if (s1 === undefined || s2 === undefined) {
-              throw new Error('Server-mode response contains link with unknown node id; cannot style.');
-            }
-            (l as any)._score = (s1 + s2) / 2;
-          }
-        }
-        Graph.graphData(finalDataServer);
-        console.log(JSON.stringify({
-          ts: new Date().toISOString(),
-          level: 'info',
-          event: 'client_style_from_server_done',
-          mode: 'server',
-          nodes: (Graph.graphData() as any).nodes.length,
-          links: (Graph.graphData() as any).links.length,
-          duration_ms: Date.now() - t0
-        }));
-        (function enableFrame() {
-          let armed = true;
-          const stopHandler = () => {
-            if (!armed) return;
-            armed = false;
-            Graph.zoomToFit(400, 50);
-            Graph.onEngineStop(() => {});
-          };
-          Graph.onEngineStop(stopHandler);
-        })();
-        const dGD = Graph.graphData() as GraphData;
-        setStatus(`Loaded (server): ${dGD.nodes.length} nodes, ${dGD.links.length} links`);
-      } else {
-        throw new Error('Mode is not selected; cannot proceed.');
+        setStatus(`Loaded (global): ${dGD.nodes.length} nodes, ${dGD.links.length} links`);
       }
     } catch (e) {
       console.error(JSON.stringify({
@@ -595,10 +409,8 @@ export default function GraphView(): JSX.Element {
 
   function validateParams(): string | null {
     if (!collection.trim()) return 'Provide collection';
-    if (mode !== 'client' && mode !== 'server') return 'Select mode';
+    // single mode: global
     if (!Number.isFinite(limit) || limit < 1 || limit > 10000) return 'Limit must be in [1,10000]';
-    const seeds = (seedsCsv || '').split(',').map(s => s.trim()).filter(Boolean);
-    if (mode === 'server' && seeds.length === 0) return 'Seeds are required for server mode';
     const { alpha, beta, gamma, lambda, exponent, iterations, dampingFactor } = clientOptions;
     const in01 = (x: number) => x >= 0 && x <= 1;
     if (!in01(alpha)) return 'Alpha must be in [0,1]';
@@ -650,24 +462,13 @@ export default function GraphView(): JSX.Element {
             label="Mode"
             data-testid="select-mode"
             value={mode}
-            onChange={(e) => setMode(e.target.value as 'client' | 'server' | '')}
+            onChange={() => setMode('global')}
             options={[
-              { value: '', label: 'Select mode' },
-              { value: 'client', label: 'client' },
-              { value: 'server', label: 'server' }
+              { value: 'global', label: 'global (no seeds)' },
             ]}
           />
         </div>
-        <div style={{ gridColumn: 'span 5' }}>
-          <Input
-            label="Seeds (CSV of ids)"
-            data-testid="input-seeds"
-            placeholder="1,2,3"
-            title="Comma-separated Neo4j node ids used as personalization seeds (stringified ids)."
-            value={seedsCsv}
-            onChange={(e) => setSeedsCsv(e.target.value)}
-          />
-        </div>
+        {/* Seeds input removed for global-only mode */}
         <div style={{ gridColumn: 'span 12', display: 'grid', gridTemplateColumns: 'repeat(12, 1fr)', gap: 8 }}>
           <Input
             label={`alpha (${clientOptions.alpha.toFixed(2)})`}
