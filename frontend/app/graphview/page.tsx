@@ -443,8 +443,12 @@ export default function GraphView(): JSX.Element {
             }
           }
           for (const l of dGD.links as any[]) {
-            const s = String(l.source);
-            const t = String(l.target);
+            const s = typeof (l as any).source === 'object' && (l as any).source !== null
+              ? String(((l as any).source as any).id)
+              : String((l as any).source);
+            const t = typeof (l as any).target === 'object' && (l as any).target !== null
+              ? String(((l as any).target as any).id)
+              : String((l as any).target);
             if (s !== t) {
               (adj.get(s) as Set<string> | undefined)?.add(t);
               (adj.get(t) as Set<string> | undefined)?.add(s);
@@ -543,8 +547,12 @@ export default function GraphView(): JSX.Element {
               const inc = linksIdx.get(id);
               if (!inc) continue;
               for (const l of inc as Set<any>) {
-                const s = String((l as any).source);
-                const t = String((l as any).target);
+                const s = typeof (l as any).source === 'object' && (l as any).source !== null
+                  ? String(((l as any).source as any).id)
+                  : String((l as any).source);
+                const t = typeof (l as any).target === 'object' && (l as any).target !== null
+                  ? String(((l as any).target as any).id)
+                  : String((l as any).target);
                 (l as any).__hl = next.has(s) && next.has(t);
               }
             }
