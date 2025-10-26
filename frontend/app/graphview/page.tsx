@@ -181,15 +181,24 @@ export default function GraphView(): JSX.Element {
         const mat = new MeshBasicMaterial({ color, transparent: true, opacity: nodeOpacityRef.current });
         const mesh = new Mesh(geom, mat);
         group.add(mesh);
-        const sprite = new SpriteText(node.title || node.label);
+        const sprite = new SpriteText(buildNodeLabel(node));
         sprite.color = '#ffffff';
         sprite.textHeight = typeof (node as any)._labelSize === 'number' ? (node as any)._labelSize : 12;
+        (sprite as any).visible = false; // hidden by default
+        (node as any).__labelSprite = sprite; // O(1) access on hover
+        (node as any).__group = group; // optional reference
         group.add(sprite as unknown as Object3D);
         return group as unknown as Object3D;
       })
-      .linkColor(() => '#d2dcff')
-      .linkOpacity((l: GraphLink & { _score?: number }) => 0.2 + 0.7 * ((l as any)._score ?? 0))
-      .linkWidth((l: GraphLink & { _score?: number }) => 0.2 + 2.8 * ((l as any)._score ?? 0))
+      .linkColor((l: GraphLink & { _score?: number; __hl?: boolean }) => (l as any).__hl ? '#ffffff' : '#d2dcff')
+      .linkOpacity((l: GraphLink & { _score?: number; __hl?: boolean }) => {
+        const base = 0.2 + 0.7 * ((l as any)._score ?? 0);
+        return (l as any).__hl ? base : Math.max(0.05, base * 0.3);
+      })
+      .linkWidth((l: GraphLink & { _score?: number; __hl?: boolean }) => {
+        const base = 0.2 + 2.8 * ((l as any)._score ?? 0);
+        return (l as any).__hl ? base * 1.5 : base * 0.6;
+      })
       .linkLabel((l: GraphLink) => l.type);
 
     graphRef.current = Graph;
@@ -393,6 +402,134 @@ export default function GraphView(): JSX.Element {
           Graph.onEngineStop(stopHandler);
         })();
         const dGD = Graph.graphData() as GraphData;
+
+        // Build adjacency and indexes once per data load
+        {
+          const id2node = new Map<string, any>();
+          const adj = new Map<string, Set<string>>();
+          const linksByNode = new Map<string, Set<any>>();
+          for (const n of dGD.nodes as any[]) {
+            const id = String(n.id);
+            id2node.set(id, n);
+            if (!adj.has(id)) adj.set(id, new Set());
+            if (!linksByNode.has(id)) linksByNode.set(id, new Set());
+            // ensure labels hidden on fresh data
+            const sp = (n as any).__labelSprite;
+            if (sp && typeof sp.visible === 'boolean') {
+              sp.visible = false;
+            }
+          }
+          for (const l of dGD.links as any[]) {
+            const s = String(l.source);
+            const t = String(l.target);
+            if (s !== t) {
+              (adj.get(s) as Set<string> | undefined)?.add(t);
+              (adj.get(t) as Set<string> | undefined)?.add(s);
+            }
+            (linksByNode.get(s) as Set<any> | undefined)?.add(l);
+            (linksByNode.get(t) as Set<any> | undefined)?.add(l);
+            (l as any).__hl = false; // default no highlight
+          }
+          (Graph as any).__id2node = id2node;
+          (Graph as any).__adj = adj;
+          (Graph as any).__linksByNode = linksByNode;
+          (Graph as any).__lastHoverSet = new Set<string>();
+          console.log(JSON.stringify({
+            ts: new Date().toISOString(),
+            level: 'info',
+            event: 'hover_indexes_built',
+            nodes: dGD.nodes.length,
+            links: dGD.links.length
+          }));
+
+          // Install hover handler (replaces previous)
+          Graph.onNodeHover((hoverNode?: any) => {
+            const tStart = performance.now();
+            const id2n: Map<string, any> = (Graph as any).__id2node;
+            const neighbors: Map<string, Set<string>> = (Graph as any).__adj;
+            const linksIdx: Map<string, Set<any>> = (Graph as any).__linksByNode;
+            const prev: Set<string> = (Graph as any).__lastHoverSet || new Set();
+
+            let next = new Set<string>();
+            if (hoverNode && typeof hoverNode.id !== 'undefined') {
+              const hid = String(hoverNode.id);
+              next.add(hid);
+              const neigh = neighbors.get(hid);
+              if (neigh && neigh.size > 0) {
+                for (const vid of neigh) next.add(vid);
+              }
+            }
+
+            // Compute diffs
+            const toHide: string[] = [];
+            const toShow: string[] = [];
+            for (const id of prev) if (!next.has(id)) toHide.push(id);
+            for (const id of next) if (!prev.has(id)) toShow.push(id);
+
+            let toggled = 0;
+            for (const id of toHide) {
+              const n = id2n.get(id);
+              const sp = n && (n as any).__labelSprite;
+              if (sp && typeof sp.visible === 'boolean') {
+                sp.visible = false;
+                toggled++;
+              } else {
+                console.error(JSON.stringify({
+                  ts: new Date().toISOString(),
+                  level: 'error',
+                  event: 'label_sprite_missing_on_hide',
+                  node_id: id,
+                  node_label: n?.label ?? null
+                }));
+              }
+            }
+            for (const id of toShow) {
+              const n = id2n.get(id);
+              const sp = n && (n as any).__labelSprite;
+              if (sp && typeof sp.visible === 'boolean') {
+                sp.visible = true;
+                toggled++;
+              } else {
+                console.error(JSON.stringify({
+                  ts: new Date().toISOString(),
+                  level: 'error',
+                  event: 'label_sprite_missing_on_show',
+                  node_id: id,
+                  node_label: n?.label ?? null
+                }));
+              }
+            }
+
+            // Update link highlights only where membership changed
+            const changed = new Set<string>();
+            for (const id of toHide) changed.add(id);
+            for (const id of toShow) changed.add(id);
+            for (const id of changed) {
+              const inc = linksIdx.get(id);
+              if (!inc) continue;
+              for (const l of inc as Set<any>) {
+                const s = String((l as any).source);
+                const t = String((l as any).target);
+                (l as any).__hl = next.has(s) && next.has(t);
+              }
+            }
+
+            (Graph as any).__lastHoverSet = next;
+            const dt = performance.now() - tStart;
+            console.log(JSON.stringify({
+              ts: new Date().toISOString(),
+              level: 'info',
+              event: hoverNode ? 'hover_enter' : 'hover_leave',
+              hovered_id: hoverNode ? String(hoverNode.id) : null,
+              show_count: toShow.length,
+              hide_count: toHide.length,
+              toggled_sprites: toggled,
+              new_set_size: next.size,
+              duration_ms: Math.round(dt * 1000) / 1000
+            }));
+          });
+        }
+
         setStatus(`Loaded (global): ${dGD.nodes.length} nodes, ${dGD.links.length} links`);
       }
     } catch (e) {
