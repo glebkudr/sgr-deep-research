@@ -180,6 +180,7 @@ export default function GraphView(): JSX.Element {
         }
         const mat = new MeshBasicMaterial({ color, transparent: true, opacity: nodeOpacityRef.current });
         const mesh = new Mesh(geom, mat);
+        (node as any).__mesh = mesh;
         group.add(mesh);
         const sprite = new SpriteText(buildNodeLabel(node));
         sprite.color = '#ffffff';
@@ -202,6 +203,13 @@ export default function GraphView(): JSX.Element {
       .linkLabel((l: GraphLink) => l.type);
 
     graphRef.current = Graph;
+    // Optional particles for highlighted links, guard for mocks
+    if (typeof (Graph as any).linkDirectionalParticles === 'function') {
+      (Graph as any).linkDirectionalParticles((l: any) => (l as any).__hl ? 4 : 0);
+    }
+    if (typeof (Graph as any).linkDirectionalParticleWidth === 'function') {
+      (Graph as any).linkDirectionalParticleWidth(4);
+    }
     // Configure d3-force link distances/strengths with special handling for IN_FILE
     const linkForce: any = Graph.d3Force && Graph.d3Force('link');
     const canConfig = linkForce && typeof linkForce.distance === 'function' && typeof linkForce.strength === 'function';
@@ -413,10 +421,25 @@ export default function GraphView(): JSX.Element {
             id2node.set(id, n);
             if (!adj.has(id)) adj.set(id, new Set());
             if (!linksByNode.has(id)) linksByNode.set(id, new Set());
-            // ensure labels hidden on fresh data
+            // reset state: labels hidden, no highlight, base scale/color
             const sp = (n as any).__labelSprite;
-            if (sp && typeof sp.visible === 'boolean') {
-              sp.visible = false;
+            if (sp && typeof sp.visible === 'boolean') sp.visible = false;
+            (n as any).__hl = false;
+            const m = (n as any).__mesh as Mesh | undefined;
+            if (m) {
+              if ((m as any).scale && typeof (m as any).scale.set === 'function') (m as any).scale.set(1, 1, 1);
+              const isFileNode = (n as any).label === 'File';
+              const sc = typeof (n as any)._score === 'number' ? (n as any)._score : 0;
+              if ((m as any).material && (m as any).material.color && typeof (m as any).material.color.set === 'function') {
+                if (isFileNode) {
+                  (m as any).material.color.set('#ffcc66');
+                } else {
+                  const hue = 0.6 - 0.6 * sc;
+                  const sat = 0.7;
+                  const light = 0.35 + 0.45 * sc;
+                  (m as any).material.color.set(`hsl(${Math.round(hue * 360)}, ${Math.round(sat * 100)}%, ${Math.round(light * 100)}%)`);
+                }
+              }
             }
           }
           for (const l of dGD.links as any[]) {
@@ -434,6 +457,7 @@ export default function GraphView(): JSX.Element {
           (Graph as any).__adj = adj;
           (Graph as any).__linksByNode = linksByNode;
           (Graph as any).__lastHoverSet = new Set<string>();
+          (Graph as any).__hoveredId = null as string | null;
           console.log(JSON.stringify({
             ts: new Date().toISOString(),
             level: 'info',
@@ -461,49 +485,60 @@ export default function GraphView(): JSX.Element {
             }
 
             // Compute diffs
-            const toHide: string[] = [];
-            const toShow: string[] = [];
-            for (const id of prev) if (!next.has(id)) toHide.push(id);
-            for (const id of next) if (!prev.has(id)) toShow.push(id);
+            const toDim: string[] = [];
+            const toBright: string[] = [];
+            for (const id of prev) if (!next.has(id)) toDim.push(id);
+            for (const id of next) if (!prev.has(id)) toBright.push(id);
 
-            let toggled = 0;
-            for (const id of toHide) {
+            let nodesStyled = 0;
+            const hoveredId = hoverNode && typeof hoverNode.id !== 'undefined' ? String(hoverNode.id) : null;
+            (Graph as any).__hoveredId = hoveredId;
+
+            const setScale = (mesh: any, k: number) => {
+              if (mesh && mesh.scale && typeof mesh.scale.set === 'function') mesh.scale.set(k, k, k);
+            };
+
+            // dim removed nodes
+            for (const id of toDim) {
               const n = id2n.get(id);
-              const sp = n && (n as any).__labelSprite;
-              if (sp && typeof sp.visible === 'boolean') {
-                sp.visible = false;
-                toggled++;
-              } else {
-                console.error(JSON.stringify({
-                  ts: new Date().toISOString(),
-                  level: 'error',
-                  event: 'label_sprite_missing_on_hide',
-                  node_id: id,
-                  node_label: n?.label ?? null
-                }));
+              const m = n && (n as any).__mesh;
+              if (m) {
+                setScale(m, 1);
+                const isFileNode = (n as any).label === 'File';
+                const sc = typeof (n as any)._score === 'number' ? (n as any)._score : 0;
+                if ((m as any).material && (m as any).material.color && typeof (m as any).material.color.set === 'function') {
+                  if (isFileNode) {
+                    (m as any).material.color.set('#ffcc66');
+                  } else {
+                    const hue = 0.6 - 0.6 * sc;
+                    const sat = 0.7;
+                    const light = 0.35 + 0.45 * sc;
+                    (m as any).material.color.set(`hsl(${Math.round(hue * 360)}, ${Math.round(sat * 100)}%, ${Math.round(light * 100)}%)`);
+                  }
+                }
+                (n as any).__hl = false;
+                nodesStyled++;
               }
             }
-            for (const id of toShow) {
+            // brighten new nodes
+            for (const id of toBright) {
               const n = id2n.get(id);
-              const sp = n && (n as any).__labelSprite;
-              if (sp && typeof sp.visible === 'boolean') {
-                sp.visible = true;
-                toggled++;
-              } else {
-                console.error(JSON.stringify({
-                  ts: new Date().toISOString(),
-                  level: 'error',
-                  event: 'label_sprite_missing_on_show',
-                  node_id: id,
-                  node_label: n?.label ?? null
-                }));
+              const m = n && (n as any).__mesh;
+              if (m) {
+                const isHovered = hoveredId !== null && id === hoveredId;
+                setScale(m, isHovered ? 1 : 1);
+                if ((m as any).material && (m as any).material.color && typeof (m as any).material.color.set === 'function') {
+                  (m as any).material.color.set(isHovered ? '#ff0000' : '#ffa000');
+                }
+                (n as any).__hl = true;
+                nodesStyled++;
               }
             }
 
             // Update link highlights only where membership changed
             const changed = new Set<string>();
-            for (const id of toHide) changed.add(id);
-            for (const id of toShow) changed.add(id);
+            for (const id of toDim) changed.add(id);
+            for (const id of toBright) changed.add(id);
             for (const id of changed) {
               const inc = linksIdx.get(id);
               if (!inc) continue;
@@ -521,12 +556,18 @@ export default function GraphView(): JSX.Element {
               level: 'info',
               event: hoverNode ? 'hover_enter' : 'hover_leave',
               hovered_id: hoverNode ? String(hoverNode.id) : null,
-              show_count: toShow.length,
-              hide_count: toHide.length,
-              toggled_sprites: toggled,
+              bright_count: toBright.length,
+              dim_count: toDim.length,
+              nodes_styled: nodesStyled,
               new_set_size: next.size,
               duration_ms: Math.round(dt * 1000) / 1000
             }));
+
+            // trigger update of highlighted properties on links/particles
+            if (typeof (Graph as any).linkColor === 'function') (Graph as any).linkColor((Graph as any).linkColor());
+            if (typeof (Graph as any).linkWidth === 'function') (Graph as any).linkWidth((Graph as any).linkWidth());
+            if (typeof (Graph as any).linkOpacity === 'function') (Graph as any).linkOpacity((Graph as any).linkOpacity());
+            if (typeof (Graph as any).linkDirectionalParticles === 'function') (Graph as any).linkDirectionalParticles((Graph as any).linkDirectionalParticles());
           });
         }
 
