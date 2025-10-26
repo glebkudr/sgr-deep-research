@@ -2,6 +2,8 @@
 
 ---
 
+> Update: `path` is now required on every node, always matching `document.rel_path`. `TextUnit` and `Chunk` records carry the same `path` plus an optional `locator` that identifies the intra-file anchor (routine signature, etc.). Any previous use of `path` as a locator should be migrated to the dedicated `locator` field.
+
 # `schema_1c_v2.json`
 
 ```json

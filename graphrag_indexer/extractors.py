@@ -222,7 +222,7 @@ def _first_descendant_text(element: ET.Element, candidates: Tuple[str, ...]) -> 
     return None
 
 
-def _build_object_node_from_reference(reference: str) -> GraphNode:
+def _build_object_node_from_reference(reference: str, *, source_path: str) -> GraphNode:
     parts = reference.split(".", 1)
     if len(parts) != 2:
         raise ValueError(f"Invalid metadata reference '{reference}'")
@@ -234,6 +234,7 @@ def _build_object_node_from_reference(reference: str) -> GraphNode:
             "qualified_name": reference,
             "type": obj_type,
             "name": obj_name,
+            "path": source_path,
         },
     )
 
@@ -352,6 +353,7 @@ def _extract_bsl(document: LoadedDocument) -> ExtractionResult:
                     current_export,
                     current_exec_side,
                     "\n".join(current_routine_lines),
+                    document.rel_path,
                     routine_map,
                 )
 
@@ -376,6 +378,7 @@ def _extract_bsl(document: LoadedDocument) -> ExtractionResult:
                 current_export,
                 current_exec_side,
                 "\n".join(current_routine_lines),
+                document.rel_path,
                 routine_map,
             )
             current_routine_name = None
@@ -399,6 +402,7 @@ def _extract_bsl(document: LoadedDocument) -> ExtractionResult:
             current_export,
             current_exec_side,
             "\n".join(current_routine_lines),
+            document.rel_path,
             routine_map,
         )
 
@@ -426,12 +430,8 @@ def _extract_bsl(document: LoadedDocument) -> ExtractionResult:
 
         references = _extract_references(body)
         for ref_name, label in references:
-            guid = stable_guid(f"{label}:{ref_name}")
-            ref_node = GraphNode(
-                label="Object",
-                key={"qualified_name": f"{label}.{ref_name}"},
-                properties={"qualified_name": f"{label}.{ref_name}", "type": label, "name": ref_name},
-            )
+            reference_key = f"{label}.{ref_name}"
+            ref_node = _build_object_node_from_reference(reference_key, source_path=document.rel_path)
             result.nodes.append(ref_node)
             result.edges.append(GraphEdge(start=node_key, type="REFERENCES", end=ref_node.node_key()))
 
@@ -440,7 +440,7 @@ def _extract_bsl(document: LoadedDocument) -> ExtractionResult:
         register_node = GraphNode(
             label=usage.label,
             key={"guid": guid},
-            properties={"name": usage.name, "guid": guid},
+            properties={"name": usage.name, "guid": guid, "path": document.rel_path},
         )
         register_key = register_node.node_key()
         if guid not in _seen_registers:
@@ -479,6 +479,7 @@ def _finalize_routine(
     export: bool,
     exec_side: str,
     body: str,
+    source_path: str,
     routine_map: Dict[str, NodeKey],
 ) -> None:
     routine_guid = stable_guid(f"{module_key.label}:{module_key.key}:{name}")
@@ -492,11 +493,13 @@ def _finalize_routine(
             "exec_side": exec_side,
             "guid": routine_guid,
             "owner_qn": owner_qn,
+            "path": source_path,
         },
     )
     result.nodes.append(node)
     result.edges.append(GraphEdge(start=module_key, type="HAS_ROUTINE", end=node.node_key()))
-    text_unit = TextUnit(text=body, path=signature or name, node_key=node.node_key())
+    locator = signature if signature else None
+    text_unit = TextUnit(text=body, path=source_path, locator=locator, node_key=node.node_key())
     result.text_units.append(text_unit)
     routine_map[name] = node.node_key()
     _routine_bodies[node.node_key()] = body
@@ -529,7 +532,7 @@ def _extract_text(document: LoadedDocument) -> ExtractionResult:
     nodes = [module_node]
     if object_node:
         nodes.append(object_node)
-    text_unit = TextUnit(text=document.content, path=document.rel_path, node_key=module_key)
+    text_unit = TextUnit(text=document.content, path=document.rel_path, locator=None, node_key=module_key)
     return ExtractionResult(nodes=nodes, edges=edges, text_units=[text_unit])
 
 
@@ -544,7 +547,11 @@ def _extract_role_xml(document: LoadedDocument) -> ExtractionResult:
     if not role_name:
         raise ValueError(f"Unable to determine role name for {document.rel_path}")
 
-    role_node = GraphNode(label="Role", key={"name": role_name}, properties={"name": role_name})
+    role_node = GraphNode(
+        label="Role",
+        key={"name": role_name},
+        properties={"name": role_name, "path": document.rel_path},
+    )
     nodes: List[GraphNode] = [role_node]
     edges: List[GraphEdge] = []
     role_key = role_node.node_key()
@@ -559,7 +566,7 @@ def _extract_role_xml(document: LoadedDocument) -> ExtractionResult:
             continue
         object_node = object_nodes.get(reference)
         if object_node is None:
-            object_node = _build_object_node_from_reference(reference)
+            object_node = _build_object_node_from_reference(reference, source_path=document.rel_path)
             object_nodes[reference] = object_node
             nodes.append(object_node)
         object_key = object_node.node_key()
@@ -583,13 +590,14 @@ def _extract_role_xml(document: LoadedDocument) -> ExtractionResult:
                 properties["condition"] = condition
             if normalized_details:
                 properties["details"] = normalized_details
+            properties["path"] = document.rel_path
             access_node = GraphNode(label="AccessRight", key={"guid": ar_guid}, properties=properties)
             nodes.append(access_node)
             access_key = access_node.node_key()
             edges.append(GraphEdge(start=role_key, type="GRANTS", end=access_key))
             edges.append(GraphEdge(start=access_key, type="PERMITS", end=object_key))
 
-    text_unit = TextUnit(text=document.content, path=document.rel_path, node_key=role_key)
+    text_unit = TextUnit(text=document.content, path=document.rel_path, locator=None, node_key=role_key)
     return ExtractionResult(nodes=nodes, edges=edges, text_units=[text_unit])
 
 
@@ -603,14 +611,22 @@ def _extract_http_service_xml(document: LoadedDocument) -> ExtractionResult:
     if not service_name:
         raise ValueError(f"Unable to determine HTTP service name for {document.rel_path}")
 
-    service_node = GraphNode(label="HTTPService", key={"name": service_name}, properties={"name": service_name})
+    service_node = GraphNode(
+        label="HTTPService",
+        key={"name": service_name},
+        properties={"name": service_name, "path": document.rel_path},
+    )
     nodes: List[GraphNode] = [service_node]
     edges: List[GraphEdge] = []
     service_key = service_node.node_key()
 
     configuration_name = _first_descendant_text(root, ("ConfigurationName", "Configuration"))
     if configuration_name:
-        config_node = GraphNode(label="Configuration", key={"name": configuration_name}, properties={"name": configuration_name})
+        config_node = GraphNode(
+            label="Configuration",
+            key={"name": configuration_name},
+            properties={"name": configuration_name, "path": document.rel_path},
+        )
         nodes.append(config_node)
         edges.append(GraphEdge(start=config_node.node_key(), type="HAS_HTTP_SERVICE", end=service_key))
 
@@ -624,7 +640,11 @@ def _extract_http_service_xml(document: LoadedDocument) -> ExtractionResult:
         )
         if not template_value:
             continue
-        template_node = GraphNode(label="URLTemplate", key={"template": template_value}, properties={"template": template_value})
+        template_node = GraphNode(
+            label="URLTemplate",
+            key={"template": template_value},
+            properties={"template": template_value, "path": document.rel_path},
+        )
         nodes.append(template_node)
         template_key = template_node.node_key()
         edges.append(GraphEdge(start=service_key, type="HAS_URL_TEMPLATE", end=template_key))
@@ -643,11 +663,15 @@ def _extract_http_service_xml(document: LoadedDocument) -> ExtractionResult:
             if method not in {"GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"}:
                 logger.warning("Unsupported HTTP method '%s' in %s; skipping.", method, document.rel_path)
                 continue
-            method_node = GraphNode(label="HTTPMethod", key={"method": method}, properties={"method": method})
+            method_node = GraphNode(
+                label="HTTPMethod",
+                key={"method": method},
+                properties={"method": method, "path": document.rel_path},
+            )
             nodes.append(method_node)
             edges.append(GraphEdge(start=template_key, type="HAS_URL_METHOD", end=method_node.node_key()))
 
-    text_unit = TextUnit(text=document.content, path=document.rel_path, node_key=service_key)
+    text_unit = TextUnit(text=document.content, path=document.rel_path, locator=None, node_key=service_key)
     return ExtractionResult(nodes=nodes, edges=edges, text_units=[text_unit])
 
 
@@ -661,7 +685,11 @@ def _extract_document_journal_xml(document: LoadedDocument) -> ExtractionResult:
     if not journal_name:
         raise ValueError(f"Unable to determine document journal name for {document.rel_path}")
 
-    journal_node = GraphNode(label="DocumentJournal", key={"name": journal_name}, properties={"name": journal_name})
+    journal_node = GraphNode(
+        label="DocumentJournal",
+        key={"name": journal_name},
+        properties={"name": journal_name, "path": document.rel_path},
+    )
     nodes: List[GraphNode] = [journal_node]
     edges: List[GraphEdge] = []
     journal_key = journal_node.node_key()
@@ -675,19 +703,19 @@ def _extract_document_journal_xml(document: LoadedDocument) -> ExtractionResult:
         if not doc_ref or doc_ref in seen_references:
             continue
         seen_references.add(doc_ref)
-        object_node = _build_object_node_from_reference(doc_ref)
+        object_node = _build_object_node_from_reference(doc_ref, source_path=document.rel_path)
         nodes.append(object_node)
         object_key = object_node.node_key()
         edges.append(GraphEdge(start=journal_key, type="CONTAINS", end=object_key))
         edges.append(GraphEdge(start=object_key, type="JOURNALED_IN", end=journal_key))
 
-    text_unit = TextUnit(text=document.content, path=document.rel_path, node_key=journal_key)
+    text_unit = TextUnit(text=document.content, path=document.rel_path, locator=None, node_key=journal_key)
     return ExtractionResult(nodes=nodes, edges=edges, text_units=[text_unit])
 
 
 def _extract_generic_xml(document: LoadedDocument) -> ExtractionResult:
     document_node = GraphNode(label="Document", key={"path": document.rel_path}, properties={"path": document.rel_path})
-    text_unit = TextUnit(text=document.content, path=document.rel_path, node_key=document_node.node_key())
+    text_unit = TextUnit(text=document.content, path=document.rel_path, locator=None, node_key=document_node.node_key())
     return ExtractionResult(nodes=[document_node], edges=[], text_units=[text_unit])
 
 def _extract_form_xml(document: LoadedDocument) -> ExtractionResult:
@@ -702,12 +730,17 @@ def _extract_form_xml(document: LoadedDocument) -> ExtractionResult:
     form_node = GraphNode(
         label="Form",
         key={"guid": form_guid},
-        properties={"name": Path(document.rel_path).stem, "guid": form_guid, "owner_qn": owner_qn},
+        properties={
+            "name": Path(document.rel_path).stem,
+            "guid": form_guid,
+            "owner_qn": owner_qn,
+            "path": document.rel_path,
+        },
     )
     nodes.append(form_node)
     edges.append(GraphEdge(start=object_node.node_key(), type="HAS_FORM", end=form_node.node_key()))
 
-    text_unit = TextUnit(text=document.content, path=document.rel_path, node_key=form_node.node_key())
+    text_unit = TextUnit(text=document.content, path=document.rel_path, locator=None, node_key=form_node.node_key())
     return ExtractionResult(nodes=nodes, edges=edges, text_units=[text_unit])
 
 def _extract_html(document: LoadedDocument) -> ExtractionResult:

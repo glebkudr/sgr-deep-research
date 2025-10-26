@@ -14,8 +14,18 @@ def chunk_text_units(units: Iterable[TextUnit], target_tokens: int = 800, overla
     for unit in units:
         segments = _chunk_text(unit.text, target_chars, overlap_chars)
         for idx, segment in enumerate(segments):
-            chunk_id = stable_guid(f"{unit.path}:{idx}")
-            chunks.append(Chunk(chunk_id=chunk_id, text=segment, path=unit.path, node_key=unit.node_key))
+            locator_component = unit.locator if unit.locator is not None else ""
+            seed = f"{unit.node_key.label}|{repr(unit.node_key.key)}|{locator_component}|{idx}"
+            chunk_id = stable_guid(seed)
+            chunks.append(
+                Chunk(
+                    chunk_id=chunk_id,
+                    text=segment,
+                    path=unit.path,
+                    locator=unit.locator,
+                    node_key=unit.node_key,
+                )
+            )
     return chunks
 
 

@@ -14,6 +14,7 @@ type Citation = {
   title: string;
   snippet: string;
   path?: string | null;
+  locator?: string | null;
   score?: number | null;
 };
 
@@ -165,7 +166,12 @@ export default function QAPage() {
               result.citations.map((citation, idx) => (
                 <div key={`${citation.title}-${idx}`} className="citation">
                   <h4>{citation.title}</h4>
-                  {citation.path && <p className="text-muted">{citation.path}</p>}
+                  {(citation.path || citation.locator) && (
+                    <p className="text-muted">
+                      {citation.path}
+                      {citation.locator ? ` :: ${citation.locator}` : ""}
+                    </p>
+                  )}
                   <p>{citation.snippet}</p>
                 </div>
               ))

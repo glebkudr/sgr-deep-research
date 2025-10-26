@@ -5,14 +5,35 @@
     {
       "label": "Configuration",
       "properties": [
-        {"name": "name", "type": "STRING", "required": true},
-        {"name": "version", "type": "STRING"}
+        {
+          "name": "name",
+          "type": "STRING",
+          "required": true
+        },
+        {
+          "name": "version",
+          "type": "STRING"
+        },
+        {
+          "name": "path",
+          "type": "string",
+          "required": true
+        }
       ]
     },
     {
       "label": "Subsystem",
       "properties": [
-        {"name": "name", "type": "STRING", "required": true}
+        {
+          "name": "name",
+          "type": "STRING",
+          "required": true
+        },
+        {
+          "name": "path",
+          "type": "string",
+          "required": true
+        }
       ]
     },
     {
@@ -38,23 +59,49 @@
             "CommandGroup",
             "Other"
           ]
+        },
+        {
+          "name": "path",
+          "type": "string",
+          "required": true
         }
       ]
     },
     {
       "label": "Object",
       "properties": [
-        {"name": "qualified_name", "type": "STRING", "required": true},
-        {"name": "type", "type": "STRING", "required": true},
-        {"name": "name", "type": "STRING"},
-        {"name": "guid", "type": "STRING"},
-        {"name": "path", "type": "STRING"}
+        {
+          "name": "qualified_name",
+          "type": "STRING",
+          "required": true
+        },
+        {
+          "name": "type",
+          "type": "STRING",
+          "required": true
+        },
+        {
+          "name": "name",
+          "type": "STRING"
+        },
+        {
+          "name": "guid",
+          "type": "STRING"
+        },
+        {
+          "name": "path",
+          "type": "string",
+          "required": true
+        }
       ]
     },
     {
       "label": "Module",
       "properties": [
-        {"name": "name", "type": "STRING"},
+        {
+          "name": "name",
+          "type": "STRING"
+        },
         {
           "name": "kind",
           "type": "STRING",
@@ -67,165 +114,463 @@
             "CommandModule"
           ]
         },
-        {"name": "guid", "type": "STRING"},
-        {"name": "owner_qn", "type": "STRING"},
-        {"name": "path", "type": "STRING"}
+        {
+          "name": "guid",
+          "type": "STRING"
+        },
+        {
+          "name": "owner_qn",
+          "type": "STRING"
+        },
+        {
+          "name": "path",
+          "type": "string",
+          "required": true
+        }
       ]
     },
     {
       "label": "Routine",
       "properties": [
-        {"name": "name", "type": "STRING", "required": true},
-        {"name": "signature", "type": "STRING"},
-        {"name": "export", "type": "BOOLEAN"},
-        {"name": "directives", "type": "STRING"},
+        {
+          "name": "name",
+          "type": "STRING",
+          "required": true
+        },
+        {
+          "name": "signature",
+          "type": "STRING"
+        },
+        {
+          "name": "export",
+          "type": "BOOLEAN"
+        },
+        {
+          "name": "directives",
+          "type": "STRING"
+        },
         {
           "name": "exec_side",
           "type": "STRING",
-          "enum": ["Server", "Client", "ServerCall", "ClientServer", "Unknown"]
+          "enum": [
+            "Server",
+            "Client",
+            "ServerCall",
+            "ClientServer",
+            "Unknown"
+          ]
         },
-        {"name": "guid", "type": "STRING"},
-        {"name": "owner_qn", "type": "STRING"}
+        {
+          "name": "guid",
+          "type": "STRING"
+        },
+        {
+          "name": "owner_qn",
+          "type": "STRING"
+        },
+        {
+          "name": "path",
+          "type": "string",
+          "required": true
+        }
       ]
     },
     {
       "label": "Form",
       "properties": [
-        {"name": "name", "type": "STRING", "required": true},
-        {"name": "role", "type": "STRING", "enum": ["Main", "List", "Choice", "Other"]},
-        {"name": "guid", "type": "STRING"},
-        {"name": "owner_qn", "type": "STRING"}
+        {
+          "name": "name",
+          "type": "STRING",
+          "required": true
+        },
+        {
+          "name": "role",
+          "type": "STRING",
+          "enum": [
+            "Main",
+            "List",
+            "Choice",
+            "Other"
+          ]
+        },
+        {
+          "name": "guid",
+          "type": "STRING"
+        },
+        {
+          "name": "owner_qn",
+          "type": "STRING"
+        },
+        {
+          "name": "path",
+          "type": "string",
+          "required": true
+        }
       ]
     },
     {
       "label": "FormControl",
       "properties": [
-        {"name": "name", "type": "STRING", "required": true},
-        {"name": "kind", "type": "STRING"},
-        {"name": "guid", "type": "STRING"}
+        {
+          "name": "name",
+          "type": "STRING",
+          "required": true
+        },
+        {
+          "name": "kind",
+          "type": "STRING"
+        },
+        {
+          "name": "guid",
+          "type": "STRING"
+        },
+        {
+          "name": "path",
+          "type": "string",
+          "required": true
+        }
       ]
     },
     {
       "label": "FormEvent",
       "properties": [
-        {"name": "name", "type": "STRING", "required": true}
+        {
+          "name": "name",
+          "type": "STRING",
+          "required": true
+        },
+        {
+          "name": "path",
+          "type": "string",
+          "required": true
+        }
       ]
     },
     {
       "label": "Binding",
       "properties": [
-        {"name": "kind", "type": "STRING", "enum": ["DataBinding", "CommandBinding"]},
-        {"name": "details", "type": "STRING"}
+        {
+          "name": "kind",
+          "type": "STRING",
+          "enum": [
+            "DataBinding",
+            "CommandBinding"
+          ]
+        },
+        {
+          "name": "details",
+          "type": "STRING"
+        },
+        {
+          "name": "path",
+          "type": "string",
+          "required": true
+        }
       ]
     },
     {
       "label": "Command",
       "properties": [
-        {"name": "name", "type": "STRING", "required": true},
-        {"name": "guid", "type": "STRING"}
+        {
+          "name": "name",
+          "type": "STRING",
+          "required": true
+        },
+        {
+          "name": "guid",
+          "type": "STRING"
+        },
+        {
+          "name": "path",
+          "type": "string",
+          "required": true
+        }
       ]
     },
     {
       "label": "Layout",
       "properties": [
-        {"name": "name", "type": "STRING", "required": true},
-        {"name": "guid", "type": "STRING"}
+        {
+          "name": "name",
+          "type": "STRING",
+          "required": true
+        },
+        {
+          "name": "guid",
+          "type": "STRING"
+        },
+        {
+          "name": "path",
+          "type": "string",
+          "required": true
+        }
       ]
     },
     {
       "label": "Attribute",
       "properties": [
-        {"name": "name", "type": "STRING", "required": true},
-        {"name": "datatype", "type": "STRING"},
-        {"name": "guid", "type": "STRING"}
+        {
+          "name": "name",
+          "type": "STRING",
+          "required": true
+        },
+        {
+          "name": "datatype",
+          "type": "STRING"
+        },
+        {
+          "name": "guid",
+          "type": "STRING"
+        },
+        {
+          "name": "path",
+          "type": "string",
+          "required": true
+        }
       ]
     },
     {
       "label": "TabularPart",
       "properties": [
-        {"name": "name", "type": "STRING", "required": true},
-        {"name": "guid", "type": "STRING"}
+        {
+          "name": "name",
+          "type": "STRING",
+          "required": true
+        },
+        {
+          "name": "guid",
+          "type": "STRING"
+        },
+        {
+          "name": "path",
+          "type": "string",
+          "required": true
+        }
       ]
     },
     {
       "label": "Resource",
       "properties": [
-        {"name": "name", "type": "STRING", "required": true},
-        {"name": "datatype", "type": "STRING"},
-        {"name": "guid", "type": "STRING"}
+        {
+          "name": "name",
+          "type": "STRING",
+          "required": true
+        },
+        {
+          "name": "datatype",
+          "type": "STRING"
+        },
+        {
+          "name": "guid",
+          "type": "STRING"
+        },
+        {
+          "name": "path",
+          "type": "string",
+          "required": true
+        }
       ]
     },
     {
       "label": "Dimension",
       "properties": [
-        {"name": "name", "type": "STRING", "required": true},
-        {"name": "datatype", "type": "STRING"},
-        {"name": "guid", "type": "STRING"}
+        {
+          "name": "name",
+          "type": "STRING",
+          "required": true
+        },
+        {
+          "name": "datatype",
+          "type": "STRING"
+        },
+        {
+          "name": "guid",
+          "type": "STRING"
+        },
+        {
+          "name": "path",
+          "type": "string",
+          "required": true
+        }
       ]
     },
     {
       "label": "AccumulationRegister",
       "properties": [
-        {"name": "name", "type": "STRING", "required": true},
-        {"name": "guid", "type": "STRING"}
+        {
+          "name": "name",
+          "type": "STRING",
+          "required": true
+        },
+        {
+          "name": "guid",
+          "type": "STRING"
+        },
+        {
+          "name": "path",
+          "type": "string",
+          "required": true
+        }
       ]
     },
     {
       "label": "InformationRegister",
       "properties": [
-        {"name": "name", "type": "STRING", "required": true},
-        {"name": "guid", "type": "STRING"}
+        {
+          "name": "name",
+          "type": "STRING",
+          "required": true
+        },
+        {
+          "name": "guid",
+          "type": "STRING"
+        },
+        {
+          "name": "path",
+          "type": "string",
+          "required": true
+        }
       ]
     },
     {
       "label": "DocumentJournal",
       "properties": [
-        {"name": "name", "type": "STRING", "required": true}
+        {
+          "name": "name",
+          "type": "STRING",
+          "required": true
+        },
+        {
+          "name": "path",
+          "type": "string",
+          "required": true
+        }
       ]
     },
     {
       "label": "PredefinedItem",
       "properties": [
-        {"name": "name", "type": "STRING", "required": true},
-        {"name": "flags", "type": "STRING"},
-        {"name": "guid", "type": "STRING"}
+        {
+          "name": "name",
+          "type": "STRING",
+          "required": true
+        },
+        {
+          "name": "flags",
+          "type": "STRING"
+        },
+        {
+          "name": "guid",
+          "type": "STRING"
+        },
+        {
+          "name": "path",
+          "type": "string",
+          "required": true
+        }
       ]
     },
     {
       "label": "Enum",
       "properties": [
-        {"name": "name", "type": "STRING", "required": true}
+        {
+          "name": "name",
+          "type": "STRING",
+          "required": true
+        },
+        {
+          "name": "path",
+          "type": "string",
+          "required": true
+        }
       ]
     },
     {
       "label": "EnumValue",
       "properties": [
-        {"name": "name", "type": "STRING", "required": true},
-        {"name": "guid", "type": "STRING"}
+        {
+          "name": "name",
+          "type": "STRING",
+          "required": true
+        },
+        {
+          "name": "guid",
+          "type": "STRING"
+        },
+        {
+          "name": "path",
+          "type": "string",
+          "required": true
+        }
       ]
     },
     {
       "label": "HTTPService",
       "properties": [
-        {"name": "name", "type": "STRING", "required": true}
+        {
+          "name": "name",
+          "type": "STRING",
+          "required": true
+        },
+        {
+          "name": "path",
+          "type": "string",
+          "required": true
+        }
       ]
     },
     {
       "label": "URLTemplate",
       "properties": [
-        {"name": "template", "type": "STRING", "required": true}
+        {
+          "name": "template",
+          "type": "STRING",
+          "required": true
+        },
+        {
+          "name": "path",
+          "type": "string",
+          "required": true
+        }
       ]
     },
     {
       "label": "HTTPMethod",
       "properties": [
-        {"name": "method", "type": "STRING", "required": true, "enum": ["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"]}
+        {
+          "name": "method",
+          "type": "STRING",
+          "required": true,
+          "enum": [
+            "GET",
+            "POST",
+            "PUT",
+            "DELETE",
+            "PATCH",
+            "HEAD",
+            "OPTIONS"
+          ]
+        },
+        {
+          "name": "path",
+          "type": "string",
+          "required": true
+        }
       ]
     },
     {
       "label": "Role",
       "properties": [
-        {"name": "name", "type": "STRING", "required": true}
+        {
+          "name": "name",
+          "type": "STRING",
+          "required": true
+        },
+        {
+          "name": "path",
+          "type": "string",
+          "required": true
+        }
       ]
     },
     {
@@ -235,35 +580,90 @@
           "name": "action",
           "type": "STRING",
           "required": true,
-          "enum": ["Read", "Write", "Insert", "Delete", "Execute", "View", "Post", "Unpost", "Custom"]
+          "enum": [
+            "Read",
+            "Write",
+            "Insert",
+            "Delete",
+            "Execute",
+            "View",
+            "Post",
+            "Unpost",
+            "Custom"
+          ]
         },
-        {"name": "condition", "type": "STRING"},
-        {"name": "details", "type": "STRING"}
+        {
+          "name": "condition",
+          "type": "STRING"
+        },
+        {
+          "name": "details",
+          "type": "STRING"
+        },
+        {
+          "name": "path",
+          "type": "string",
+          "required": true
+        }
       ]
     },
     {
       "label": "EventSubscription",
       "properties": [
-        {"name": "event", "type": "STRING", "required": true}
+        {
+          "name": "event",
+          "type": "STRING",
+          "required": true
+        },
+        {
+          "name": "path",
+          "type": "string",
+          "required": true
+        }
       ]
     },
     {
       "label": "EventSource",
       "properties": [
-        {"name": "name", "type": "STRING", "required": true},
-        {"name": "kind", "type": "STRING"}
+        {
+          "name": "name",
+          "type": "STRING",
+          "required": true
+        },
+        {
+          "name": "kind",
+          "type": "STRING"
+        },
+        {
+          "name": "path",
+          "type": "string",
+          "required": true
+        }
       ]
     },
     {
       "label": "Document",
       "properties": [
-        {"name": "path", "type": "STRING", "required": true}
+        {
+          "name": "path",
+          "type": "string",
+          "required": true
+        }
       ]
     },
     {
       "label": "Chunk",
       "properties": [
-        {"name": "index", "type": "INTEGER", "required": true}
+        {
+          "name": "index",
+          "type": "INTEGER",
+          "required": true
+        },
+        {
+          "name": "path",
+          "type": "string",
+          "required": true
+        }
       ]
     }
   ],
@@ -309,64 +709,281 @@
     "PART_OF_CHUNK"
   ],
   "patterns": [
-    ["Configuration", "CONTAINS", "Subsystem"],
-    ["Configuration", "CONTAINS", "ObjectType"],
-    ["ObjectType", "CONTAINS", "Object"],
-    ["Object", "BELONGS_TO", "Subsystem"],
-    ["Object", "HAS_MODULE", "Module"],
-    ["Module", "OWNED_BY", "Object"],
-    ["Module", "HAS_ROUTINE", "Routine"],
-    ["Object", "HAS_FORM", "Form"],
-    ["Object", "DEFAULT_FORM", "Form"],
-    ["Form", "HAS_CONTROL", "FormControl"],
-    ["FormControl", "BINDS", "Binding"],
-    ["Binding", "BINDS_TO_COMMAND", "Command"],
-    ["FormEvent", "HANDLES_EVENT", "Routine"],
-    ["Object", "HAS_LAYOUT", "Layout"],
-    ["Layout", "LAYOUT_OF", "Object"],
-    ["Object", "DEFINES_ATTRIBUTE", "Attribute"],
-    ["Object", "HAS_TABULAR_PART", "TabularPart"],
-    ["AccumulationRegister", "HAS_RESOURCE", "Resource"],
-    ["AccumulationRegister", "HAS_DIMENSION", "Dimension"],
-    ["InformationRegister", "HAS_DIMENSION", "Dimension"],
-    ["Attribute", "USES_TYPE", "Object"],
-    ["Resource", "USES_TYPE", "Object"],
-    ["Dimension", "USES_TYPE", "Object"],
-    ["Attribute", "REFERENCES", "Object"],
-    ["Module", "WRITES_TO", "AccumulationRegister"],
-    ["Module", "READS_FROM", "InformationRegister"],
-    ["DocumentJournal", "CONTAINS", "Object"],
-    ["Object", "JOURNALED_IN", "DocumentJournal"],
-    ["Object", "MAKES_MOVEMENTS_IN", "AccumulationRegister"],
-    ["Enum", "HAS_ENUM_VALUE", "EnumValue"],
-    ["Object", "HAS_PREDEFINED", "PredefinedItem"],
-    ["Configuration", "HAS_HTTP_SERVICE", "HTTPService"],
-    ["HTTPService", "HAS_URL_TEMPLATE", "URLTemplate"],
-    ["URLTemplate", "HAS_URL_METHOD", "HTTPMethod"],
-    ["Role", "ROLE_HAS_ACCESS_TO", "Object"],
-    ["Role", "GRANTS", "AccessRight"],
-    ["AccessRight", "PERMITS", "Object"],
-    ["EventSubscription", "HAS_EVENT_SOURCE", "EventSource"],
-    ["EventSubscription", "SUBSCRIBES_TO", "Routine"],
-    ["EventSubscription", "SUBSCRIBES_TO", "Object"],
-    ["Routine", "CALLS", "Routine"],
-    ["Object", "RESOLVES_TO", "Object"],
-    ["Chunk", "PART_OF_DOCUMENT", "Document"]
+    [
+      "Configuration",
+      "CONTAINS",
+      "Subsystem"
+    ],
+    [
+      "Configuration",
+      "CONTAINS",
+      "ObjectType"
+    ],
+    [
+      "ObjectType",
+      "CONTAINS",
+      "Object"
+    ],
+    [
+      "Object",
+      "BELONGS_TO",
+      "Subsystem"
+    ],
+    [
+      "Object",
+      "HAS_MODULE",
+      "Module"
+    ],
+    [
+      "Module",
+      "OWNED_BY",
+      "Object"
+    ],
+    [
+      "Module",
+      "HAS_ROUTINE",
+      "Routine"
+    ],
+    [
+      "Object",
+      "HAS_FORM",
+      "Form"
+    ],
+    [
+      "Object",
+      "DEFAULT_FORM",
+      "Form"
+    ],
+    [
+      "Form",
+      "HAS_CONTROL",
+      "FormControl"
+    ],
+    [
+      "FormControl",
+      "BINDS",
+      "Binding"
+    ],
+    [
+      "Binding",
+      "BINDS_TO_COMMAND",
+      "Command"
+    ],
+    [
+      "FormEvent",
+      "HANDLES_EVENT",
+      "Routine"
+    ],
+    [
+      "Object",
+      "HAS_LAYOUT",
+      "Layout"
+    ],
+    [
+      "Layout",
+      "LAYOUT_OF",
+      "Object"
+    ],
+    [
+      "Object",
+      "DEFINES_ATTRIBUTE",
+      "Attribute"
+    ],
+    [
+      "Object",
+      "HAS_TABULAR_PART",
+      "TabularPart"
+    ],
+    [
+      "AccumulationRegister",
+      "HAS_RESOURCE",
+      "Resource"
+    ],
+    [
+      "AccumulationRegister",
+      "HAS_DIMENSION",
+      "Dimension"
+    ],
+    [
+      "InformationRegister",
+      "HAS_DIMENSION",
+      "Dimension"
+    ],
+    [
+      "Attribute",
+      "USES_TYPE",
+      "Object"
+    ],
+    [
+      "Resource",
+      "USES_TYPE",
+      "Object"
+    ],
+    [
+      "Dimension",
+      "USES_TYPE",
+      "Object"
+    ],
+    [
+      "Attribute",
+      "REFERENCES",
+      "Object"
+    ],
+    [
+      "Module",
+      "WRITES_TO",
+      "AccumulationRegister"
+    ],
+    [
+      "Module",
+      "READS_FROM",
+      "InformationRegister"
+    ],
+    [
+      "DocumentJournal",
+      "CONTAINS",
+      "Object"
+    ],
+    [
+      "Object",
+      "JOURNALED_IN",
+      "DocumentJournal"
+    ],
+    [
+      "Object",
+      "MAKES_MOVEMENTS_IN",
+      "AccumulationRegister"
+    ],
+    [
+      "Enum",
+      "HAS_ENUM_VALUE",
+      "EnumValue"
+    ],
+    [
+      "Object",
+      "HAS_PREDEFINED",
+      "PredefinedItem"
+    ],
+    [
+      "Configuration",
+      "HAS_HTTP_SERVICE",
+      "HTTPService"
+    ],
+    [
+      "HTTPService",
+      "HAS_URL_TEMPLATE",
+      "URLTemplate"
+    ],
+    [
+      "URLTemplate",
+      "HAS_URL_METHOD",
+      "HTTPMethod"
+    ],
+    [
+      "Role",
+      "ROLE_HAS_ACCESS_TO",
+      "Object"
+    ],
+    [
+      "Role",
+      "GRANTS",
+      "AccessRight"
+    ],
+    [
+      "AccessRight",
+      "PERMITS",
+      "Object"
+    ],
+    [
+      "EventSubscription",
+      "HAS_EVENT_SOURCE",
+      "EventSource"
+    ],
+    [
+      "EventSubscription",
+      "SUBSCRIBES_TO",
+      "Routine"
+    ],
+    [
+      "EventSubscription",
+      "SUBSCRIBES_TO",
+      "Object"
+    ],
+    [
+      "Routine",
+      "CALLS",
+      "Routine"
+    ],
+    [
+      "Object",
+      "RESOLVES_TO",
+      "Object"
+    ],
+    [
+      "Chunk",
+      "PART_OF_DOCUMENT",
+      "Document"
+    ]
   ],
   "entity_resolution": {
-    "Object": ["qualified_name", "guid"],
-    "Module": ["guid", "name", "kind", "owner_qn"],
-    "Routine": ["guid", "signature", "name", "owner_qn"],
-    "Attribute": ["guid", "name", "qualified_name"],
-    "Form": ["guid", "name", "owner_qn"],
-    "FormControl": ["guid", "name"],
-    "Command": ["guid", "name", "owner_qn"],
-    "Layout": ["guid", "name", "owner_qn"],
-    "Enum": ["name"],
-    "EnumValue": ["guid", "name"],
-    "AccumulationRegister": ["name", "guid"],
-    "InformationRegister": ["name", "guid"],
-    "Role": ["name"]
+    "Object": [
+      "qualified_name",
+      "guid"
+    ],
+    "Module": [
+      "guid",
+      "name",
+      "kind",
+      "owner_qn"
+    ],
+    "Routine": [
+      "guid",
+      "signature",
+      "name",
+      "owner_qn"
+    ],
+    "Attribute": [
+      "guid",
+      "name",
+      "qualified_name"
+    ],
+    "Form": [
+      "guid",
+      "name",
+      "owner_qn"
+    ],
+    "FormControl": [
+      "guid",
+      "name"
+    ],
+    "Command": [
+      "guid",
+      "name",
+      "owner_qn"
+    ],
+    "Layout": [
+      "guid",
+      "name",
+      "owner_qn"
+    ],
+    "Enum": [
+      "name"
+    ],
+    "EnumValue": [
+      "guid",
+      "name"
+    ],
+    "AccumulationRegister": [
+      "name",
+      "guid"
+    ],
+    "InformationRegister": [
+      "name",
+      "guid"
+    ],
+    "Role": [
+      "name"
+    ]
   },
   "additional_node_types": false,
   "additional_relationship_types": false,

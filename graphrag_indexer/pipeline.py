@@ -181,7 +181,7 @@ class IndexingPipeline:
             job_state.stats.phase = "VECTOR_INDEX"
             self.job_store.save(job_state)
             logger.info("event=phase_set job_id=%s collection=%s phase=%s", job.job_id, job.collection, "VECTOR_INDEX")
-            self._build_vector_index(job.collection, chunks, embeddings, node_ids)
+            self._build_vector_index(job.job_id, job.collection, chunks, embeddings, node_ids)
             logger.info("event=vector_index_updated job_id=%s collection=%s", job.job_id, job.collection)
             # Finalizing phase after vector index persisted
             job_state.stats.phase = "FINALIZING"
@@ -273,6 +273,7 @@ class IndexingPipeline:
 
     def _build_vector_index(
         self,
+        job_id: str,
         collection: str,
         chunks: List[Chunk],
         embeddings: np.ndarray,
@@ -290,9 +291,19 @@ class IndexingPipeline:
                     "chunk_id": chunk.chunk_id,
                     "node_id": node_id,
                     "path": chunk.path,
+                    "locator": chunk.locator,
                     "text": chunk.text,
                     "text_snippet": chunk.text[:300],
                 }
+            )
+            logger.info(
+                "event=chunk_metadata job_id=%s collection=%s chunk_id=%s node_id=%s path=%s locator=%s",
+                job_id,
+                collection,
+                chunk.chunk_id,
+                node_id,
+                chunk.path,
+                chunk.locator,
             )
         store.set_metadata(metadata)
         store.save()

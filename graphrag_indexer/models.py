@@ -41,6 +41,7 @@ class Chunk:
     chunk_id: str
     text: str
     path: str
+    locator: Optional[str]
     node_key: NodeKey
     summary: Optional[str] = None
 
@@ -49,6 +50,7 @@ class Chunk:
 class TextUnit:
     text: str
     path: str
+    locator: Optional[str]
     node_key: NodeKey
 
 

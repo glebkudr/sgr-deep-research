@@ -88,6 +88,7 @@ class RetrievalService:
                     "chunk_id": metadata.get("chunk_id", hit.chunk_id),
                     "node_id": metadata.get("node_id"),
                     "path": metadata.get("path"),
+                    "locator": metadata.get("locator"),
                     "text": metadata.get("text") or metadata.get("text_snippet", ""),
                     "snippet": metadata.get("text_snippet") or metadata.get("text", "")[:300],
                     "score": float(hit.score),
@@ -178,13 +179,32 @@ class RetrievalService:
         for context in chunk_contexts:
             node_id = context["node_id"]
             node_info = node_details.get(node_id) if node_id is not None else None
+            locator = context.get("locator")
+            if node_info:
+                title_value = node_info.get("title")
+                resolved_path = node_info.get("path")
+            else:
+                title_value = None
+                resolved_path = context["path"]
+
+            if not resolved_path:
+                raise RuntimeError(f"Missing path in chunk metadata for chunk_id={context['chunk_id']}")
+
+            if title_value:
+                citation_title = title_value
+            elif locator:
+                citation_title = locator
+            else:
+                citation_title = context["path"]
+
             citations.append(
                 {
                     "node_id": node_id,
                     "label": node_info["label"] if node_info else None,
-                    "title": node_info["title"] if node_info else context["path"],
+                    "title": citation_title,
                     "snippet": context["snippet"],
-                    "path": node_info["path"] if node_info else context["path"],
+                    "path": resolved_path,
+                    "locator": locator,
                     "score": context["score"],
                 }
             )
@@ -199,8 +219,9 @@ class RetrievalService:
         lines: List[str] = []
         lines.append("=== Chunks ===")
         for idx, ctx in enumerate(chunk_contexts, start=1):
+            locator_suffix = f" :: {ctx['locator']}" if ctx.get("locator") else ""
             lines.append(
-                f"[Chunk {idx}] path: {ctx['path']} (node_id={ctx['node_id']}) "
+                f"[Chunk {idx}] path: {ctx['path']}{locator_suffix} (node_id={ctx['node_id']}) "
                 f"score={ctx['score']:.3f}\n{ctx['text']}"
             )
 

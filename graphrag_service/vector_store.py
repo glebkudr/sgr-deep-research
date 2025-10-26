@@ -48,7 +48,16 @@ class FaissVectorStore:
         self._ids = list(ids)
 
     def set_metadata(self, rows: Iterable[dict]) -> None:
-        self.metadata = {row["chunk_id"]: row for row in rows}
+        metadata: dict[str, dict] = {}
+        for row in rows:
+            chunk_id = row.get("chunk_id")
+            if not chunk_id:
+                raise ValueError("VectorStore metadata row missing 'chunk_id'.")
+            path_value = row.get("path")
+            if not path_value:
+                raise ValueError(f"VectorStore metadata row missing 'path' for chunk_id={chunk_id}.")
+            metadata[chunk_id] = row
+        self.metadata = metadata
 
     def save(self) -> None:
         if not self.index:

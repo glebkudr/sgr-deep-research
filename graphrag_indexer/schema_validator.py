@@ -12,7 +12,7 @@ try:
 except ImportError:  # pragma: no cover
     yaml = None
 
-from .models import ExtractionResult, GraphEdge, GraphNode
+from .models import ExtractionResult, GraphEdge, GraphNode, TextUnit
 
 
 logger = logging.getLogger(__name__)
@@ -106,6 +106,8 @@ class SchemaValidator:
             self._validate_node(node, source)
         for edge in extraction.edges:
             self._validate_edge(edge, source)
+        for text_unit in extraction.text_units:
+            self._validate_text_unit(text_unit, source)
 
     def _validate_node(self, node: GraphNode, source: Optional[str]) -> None:
         spec = self._node_specs.get(node.label)
@@ -117,36 +119,62 @@ class SchemaValidator:
         if not self._additional_properties_allowed:
             unknown_props = set(node.properties.keys()) - spec.allowed
             if unknown_props:
-                raise SchemaValidationError(
-                    self._message(
-                        f"Node '{node.label}' contains unsupported properties: {sorted(unknown_props)}",
-                        source,
-                    )
+                self._fail(
+                    message=f"Node '{node.label}' contains unsupported properties: {sorted(unknown_props)}",
+                    source=source,
+                    label=node.label,
+                    unknown_properties=sorted(unknown_props),
                 )
 
         missing_required = [prop for prop in spec.required if node.properties.get(prop) in (None, "")]
         if missing_required:
-            raise SchemaValidationError(
-                self._message(
-                    f"Node '{node.label}' missing required properties: {missing_required}",
-                    source,
-                )
+            self._fail(
+                message=f"Node '{node.label}' missing required properties: {missing_required}",
+                source=source,
+                label=node.label,
+                missing_properties=missing_required,
             )
 
     def _validate_edge(self, edge: GraphEdge, source: Optional[str]) -> None:
         if edge.type not in self._allowed_relationships:
             if self._additional_relationship_types:
                 return
-            raise SchemaValidationError(self._message(f"Unknown relationship type '{edge.type}'", source))
+            self._fail(
+                message=f"Unknown relationship type '{edge.type}'",
+                source=source,
+                relationship_type=edge.type,
+            )
 
         if not edge.start or not edge.end:
-            raise SchemaValidationError(self._message("Edge must have start and end node keys", source))
+            self._fail(
+                message="Edge must have start and end node keys",
+                source=source,
+                relationship_type=edge.type,
+            )
+
+    def _validate_text_unit(self, text_unit: TextUnit, source: Optional[str]) -> None:
+        if not text_unit.path or not text_unit.path.strip():
+            self._fail(
+                message="TextUnit missing required file path",
+                source=source,
+                node_label=text_unit.node_key.label,
+                node_key=dict(text_unit.node_key.key),
+            )
 
     @staticmethod
     def _message(message: str, source: Optional[str]) -> str:
         if source:
             return f"{message} (source: {source})"
         return message
+
+    def _fail(self, *, message: str, source: Optional[str], **context: object) -> None:
+        logger.error(
+            "event=schema_validation_failed message=%s source=%s context=%s",
+            message,
+            source or "<unknown>",
+            context,
+        )
+        raise SchemaValidationError(self._message(message, source))
 
 
 __all__ = ["SchemaValidator", "SchemaValidationError"]
