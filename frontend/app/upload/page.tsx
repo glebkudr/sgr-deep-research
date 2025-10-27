@@ -5,6 +5,7 @@ import { ChangeEvent, useCallback, useEffect, useMemo, useRef, useState } from "
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { ProgressBar } from "@/components/ui/ProgressBar";
+import { SegmentedProgressBar } from "@/components/ui/SegmentedProgressBar";
 import { Spinner } from "@/components/ui/Spinner";
 import { Toast } from "@/components/ui/Toast";
 import { apiRequest } from "@/lib/api";
@@ -24,6 +25,9 @@ type JobStats = {
   graph_edges_written?: number;
   duration_sec: number;
   phase?: string;
+  session_segments?: number[];
+  session_batches?: number;
+  session_total_files?: number;
 };
 
 type JobRecord = {
@@ -43,7 +47,6 @@ type RecentJob = {
 
 const RECENTS_KEY = "graphrag_recent_jobs";
 const POLL_INTERVAL_MS = 1500;
-
 export default function UploadPage() {
   const [collection, setCollection] = useState("");
   const [files, setFiles] = useState<File[]>([]);
@@ -118,37 +121,83 @@ const allowed = useMemo(() => new Set(["bsl", "xml", "html", "htm", "txt"]), [])
   const onSubmit = async () => {
     setError(null);
     setToast(null);
-    if (!collection.trim()) {
-      setError("Укажите коллекцию.");
+    const trimmedCollection = collection.trim();
+    if (!trimmedCollection) {
+      setError("Collection is required.");
       return;
     }
     if (!files.length) {
-      setError("Выберите хотя бы один файл.");
+      setError("Choose at least one file to upload.");
       return;
     }
-    const formData = new FormData();
-    formData.append("collection", collection.trim());
-    files.forEach((file) => {
-      const rel = (file as any).webkitRelativePath || file.name;
-      // pass relative path as the third argument to preserve folder structure on server
-      formData.append("files", file, rel);
-    });
+
     setIsUploading(true);
-    const response = await apiRequest<{ job_id: string }>({
-      path: "/upload",
+
+    const initPayload = new FormData();
+    initPayload.append("collection", trimmedCollection);
+    const initResponse = await apiRequest<{ upload_id: string; batch_size: number }>({
+      path: "/upload/init",
       method: "POST",
-      body: formData,
+      body: initPayload,
+    });
+    if (!initResponse.ok || !initResponse.data) {
+      setIsUploading(false);
+      setToast({ message: initResponse.error ?? "Failed to start upload session.", variant: "error" });
+      return;
+    }
+
+    const { upload_id: uploadId, batch_size: batchSize } = initResponse.data;
+    if (!Number.isFinite(batchSize) || batchSize <= 0) {
+      setIsUploading(false);
+      setToast({ message: "Upload session returned invalid batch size.", variant: "error" });
+      return;
+    }
+
+    const batches: File[][] = [];
+    for (let index = 0; index < files.length; index += batchSize) {
+      batches.push(files.slice(index, index + batchSize));
+    }
+
+    for (let batchIndex = 0; batchIndex < batches.length; batchIndex += 1) {
+      const batch = batches[batchIndex];
+      const partPayload = new FormData();
+      partPayload.append("upload_id", uploadId);
+      batch.forEach((file) => {
+        const rel = (file as any).webkitRelativePath || file.name;
+        partPayload.append("files", file, rel);
+      });
+      const partResponse = await apiRequest<{ saved: number }>({
+        path: "/upload/part",
+        method: "POST",
+        body: partPayload,
+      });
+      if (!partResponse.ok || !partResponse.data) {
+        setIsUploading(false);
+        setToast({
+          message: partResponse.error ?? `Upload failed while processing batch ${batchIndex + 1}.`,
+          variant: "error",
+        });
+        return;
+      }
+    }
+
+    const completePayload = new FormData();
+    completePayload.append("upload_id", uploadId);
+    const completeResponse = await apiRequest<{ job_id: string }>({
+      path: "/upload/complete",
+      method: "POST",
+      body: completePayload,
     });
     setIsUploading(false);
-    if (!response.ok || !response.data) {
-      setToast({ message: response.error ?? "Не удалось создать задачу.", variant: "error" });
+    if (!completeResponse.ok || !completeResponse.data) {
+      setToast({ message: completeResponse.error ?? "Upload session completion failed.", variant: "error" });
       return;
     }
-    setJob(null);
-    setJobId(response.data.job_id);
-    setToast({ message: "Задача создана, начато индексирование.", variant: "success" });
-  };
 
+    setJob(null);
+    setJobId(completeResponse.data.job_id);
+    setToast({ message: "Upload session completed. Indexing job created.", variant: "success" });
+  };
   const onSelectJob = async (jobIdToLoad: string) => {
     const response = await apiRequest<JobRecord>({ path: `/jobs/${jobIdToLoad}` });
     if (response.ok && response.data) {
@@ -169,10 +218,21 @@ const allowed = useMemo(() => new Set(["bsl", "xml", "html", "htm", "txt"]), [])
     window.open(url, "_blank", "noopener,noreferrer");
   };
 
+  const filesCounts = useMemo(() => {
+    const stats = job?.stats;
+    if (!stats) return null;
+    const denom = typeof stats.total_files === "number" ? stats.total_files : 0;
+    if (denom <= 0) {
+      return null;
+    }
+    const numer = typeof stats.processed_files === "number" ? stats.processed_files : 0;
+    return { numer, denom };
+  }, [job?.stats]);
+
   const progressValue = useMemo(() => {
-    if (!job || !job.stats || (job.stats.total_files ?? 0) <= 0) return null;
-    return Math.min(100, Math.round((job.stats.processed_files / job.stats.total_files) * 100));
-  }, [job?.stats?.processed_files, job?.stats?.total_files, job]);
+    if (!filesCounts) return null;
+    return Math.min(100, Math.round((filesCounts.numer / filesCounts.denom) * 100));
+  }, [filesCounts]);
 
   const embeddingsBar = useMemo(() => {
     const stats = job?.stats;
@@ -222,13 +282,26 @@ const allowed = useMemo(() => new Set(["bsl", "xml", "html", "htm", "txt"]), [])
     return null;
   }, [job?.stats]);
 
+  const sessionSegments = useMemo(() => job?.stats?.session_segments ?? [], [job?.stats?.session_segments]);
+
+  const segmentsAvailable = useMemo(() => {
+    if (!sessionSegments.length) return false;
+    if (sessionSegments.some((value) => value <= 0)) return false;
+    const totalUnits = sessionSegments.reduce((sum, value) => sum + value, 0);
+    if (totalUnits <= 0) return false;
+    const sessionTotal = job?.stats?.session_total_files ?? 0;
+    if (sessionTotal <= 0) return false;
+    return true;
+  }, [sessionSegments, job?.stats?.session_total_files]);
+
   const showSpinner = useMemo(() => {
+    if (!job) return false;
+    if (job.status !== "RUNNING") return false;
     const hasFilesBar = progressValue !== null;
     const hasEmbeddings = !!embeddingsBar;
     const hasGraphNodes = !!graphNodesBar;
     const hasGraphEdges = !!graphEdgesBar;
-    const hasAnyBar = hasFilesBar || hasEmbeddings || hasGraphNodes || hasGraphEdges;
-    return job && job.status === "RUNNING" && !hasAnyBar;
+    return !(hasFilesBar || hasEmbeddings || hasGraphNodes || hasGraphEdges);
   }, [job, progressValue, embeddingsBar, graphNodesBar, graphEdgesBar]);
 
   return (
@@ -279,20 +352,38 @@ const allowed = useMemo(() => new Set(["bsl", "xml", "html", "htm", "txt"]), [])
             <StatusPill status={job?.status ?? "PENDING"} />
           </header>
 
-          {progressValue !== null && (
-            <div className="stack" data-testid="job-progress">
-              <ProgressBar value={progressValue} label="Files processed" />
-              <div className="inline text-muted" data-testid="job-progress-count" style={{ gap: "0.25rem" }}>
-                <span>{job?.stats.processed_files ?? 0}</span>
+          {filesCounts && (
+            <div className="stack" data-testid="indexing-files">
+              {segmentsAvailable ? (
+                <SegmentedProgressBar
+                  valueNumer={filesCounts.numer}
+                  valueDenom={filesCounts.denom}
+                  segments={sessionSegments}
+                  label="Files processed"
+                />
+              ) : (
+                <ProgressBar value={progressValue} label="Files processed" />
+              )}
+              <div className="inline text-muted" data-testid="indexing-files-count" style={{ gap: "0.25rem" }}>
+                <span>{filesCounts.numer}</span>
                 <span>/</span>
-                <span>{job?.stats.total_files ?? 0}</span>
+                <span>{filesCounts.denom}</span>
               </div>
             </div>
           )}
 
           {embeddingsBar && (
             <div className="stack" data-testid="indexing-embeddings">
-              <ProgressBar value={embeddingsBar.percent} label="Embeddings" />
+              {segmentsAvailable ? (
+                <SegmentedProgressBar
+                  valueNumer={embeddingsBar.numer}
+                  valueDenom={embeddingsBar.denom}
+                  segments={sessionSegments}
+                  label="Embeddings"
+                />
+              ) : (
+                <ProgressBar value={embeddingsBar.percent} label="Embeddings" />
+              )}
               <div className="inline text-muted" data-testid="indexing-embeddings-count" style={{ gap: "0.25rem" }}>
                 <span>{embeddingsBar.numer}</span>
                 <span>/</span>
@@ -303,7 +394,16 @@ const allowed = useMemo(() => new Set(["bsl", "xml", "html", "htm", "txt"]), [])
 
           {graphNodesBar && (
             <div className="stack" data-testid="indexing-graph-nodes">
-              <ProgressBar value={graphNodesBar.percent} label="Graph nodes" />
+              {segmentsAvailable ? (
+                <SegmentedProgressBar
+                  valueNumer={graphNodesBar.numer}
+                  valueDenom={graphNodesBar.denom}
+                  segments={sessionSegments}
+                  label="Graph nodes"
+                />
+              ) : (
+                <ProgressBar value={graphNodesBar.percent} label="Graph nodes" />
+              )}
               <div className="inline text-muted" data-testid="indexing-graph-nodes-count" style={{ gap: "0.25rem" }}>
                 <span>{graphNodesBar.numer}</span>
                 <span>/</span>
@@ -314,7 +414,16 @@ const allowed = useMemo(() => new Set(["bsl", "xml", "html", "htm", "txt"]), [])
 
           {graphEdgesBar && (
             <div className="stack" data-testid="indexing-graph-edges">
-              <ProgressBar value={graphEdgesBar.percent} label="Graph edges" />
+              {segmentsAvailable ? (
+                <SegmentedProgressBar
+                  valueNumer={graphEdgesBar.numer}
+                  valueDenom={graphEdgesBar.denom}
+                  segments={sessionSegments}
+                  label="Graph edges"
+                />
+              ) : (
+                <ProgressBar value={graphEdgesBar.percent} label="Graph edges" />
+              )}
               <div className="inline text-muted" data-testid="indexing-graph-edges-count" style={{ gap: "0.25rem" }}>
                 <span>{graphEdgesBar.numer}</span>
                 <span>/</span>

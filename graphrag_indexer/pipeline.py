@@ -36,9 +36,13 @@ class IndexingPipeline:
         job_state.status = JobStatus.RUNNING
         job_state.started_at = datetime.utcnow()
         job_state.errors = []
-        # Preserve expected total_files if it was set at upload time
-        preserved_total = job_state.stats.total_files if job_state.stats else 0
-        job_state.stats = JobStats(total_files=preserved_total)
+        preserved_stats = job_state.stats if job_state.stats else JobStats()
+        job_state.stats = JobStats(
+            total_files=preserved_stats.total_files,
+            session_segments=list(preserved_stats.session_segments),
+            session_batches=preserved_stats.session_batches,
+            session_total_files=preserved_stats.session_total_files,
+        )
         self.job_store.save(job_state)
 
         try:

@@ -13,6 +13,15 @@ class UploadPathsRequest(BaseModel):
     paths: List[str]
 
 
+class UploadInitResponse(BaseModel):
+    upload_id: str
+    batch_size: int
+
+
+class UploadPartResponse(BaseModel):
+    saved: int
+
+
 class UploadResponse(BaseModel):
     job_id: str
 
@@ -30,6 +39,9 @@ class JobStatsSchema(BaseModel):
     graph_edges_total: int = Field(default=0)
     graph_edges_written: int = Field(default=0)
     duration_sec: float
+    session_segments: List[int] = Field(default_factory=list)
+    session_batches: int = Field(default=0)
+    session_total_files: int = Field(default=0)
 
 
 class JobErrorSchema(BaseModel):
@@ -67,6 +79,9 @@ class JobStateSchema(BaseModel):
                 graph_edges_total=state.stats.graph_edges_total,
                 graph_edges_written=state.stats.graph_edges_written,
                 duration_sec=state.stats.duration_sec,
+                session_segments=list(state.stats.session_segments),
+                session_batches=state.stats.session_batches,
+                session_total_files=state.stats.session_total_files,
             ),
             errors=[JobErrorSchema(message=err.message, path=err.path) for err in state.errors],
             created_at=state.created_at,

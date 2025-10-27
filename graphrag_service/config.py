@@ -48,6 +48,9 @@ class Settings(BaseSettings):
     embedding_retry_attempts: int = 5
     embedding_retry_backoff: float = 2.0
 
+    upload_session_dirname: str = ".upload_sessions"
+    upload_session_batch_size: int = 800
+
     qa_model: str = "gpt-4o-mini"
     qa_temperature: float = 0.0
     qa_max_tokens: int = 800

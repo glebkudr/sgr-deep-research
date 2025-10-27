@@ -228,6 +228,26 @@ a {
   transition: width 0.2s ease;
 }
 
+.segmented-progress-track {
+  display: flex;
+  gap: 2px;
+  background: transparent;
+}
+
+.segmented-progress-segment {
+  position: relative;
+  background: rgba(148, 163, 184, 0.25);
+  border-radius: 999px;
+  overflow: hidden;
+  min-width: 6px;
+}
+
+.segmented-progress-segment-fill {
+  height: 100%;
+  background: linear-gradient(135deg, #38bdf8, #818cf8);
+  transition: width 0.2s ease;
+}
+
 .spinner {
   width: 1.25rem;
   height: 1.25rem;

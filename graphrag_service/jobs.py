@@ -32,6 +32,9 @@ class JobStats:
     graph_edges_total: int = 0
     graph_edges_written: int = 0
     duration_sec: float = 0.0
+    session_segments: List[int] = field(default_factory=list)
+    session_batches: int = 0
+    session_total_files: int = 0
 
 
 @dataclass
