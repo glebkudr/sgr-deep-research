@@ -36,6 +36,8 @@ type JobRecord = {
   status: JobStatus;
   stats: JobStats;
   errors: { message: string; path?: string }[];
+  retry_count: number;
+  last_error_phase?: string | null;
 };
 
 type RecentJob = {
@@ -56,31 +58,10 @@ export default function UploadPage() {
   const [error, setError] = useState<string | null>(null);
   const [toast, setToast] = useState<{ message: string; variant?: "info" | "success" | "error" } | null>(null);
   const [recentJobs, setRecentJobs] = useState<RecentJob[]>([]);
+  const [retryingJobId, setRetryingJobId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
 const allowed = useMemo(() => new Set(["bsl", "xml", "html", "htm", "txt"]), []);
-
-  useEffect(() => {
-    // Enable directory selection on supported browsers
-    if (fileInputRef.current) {
-      fileInputRef.current.setAttribute("webkitdirectory", "");
-      fileInputRef.current.setAttribute("directory", "");
-    }
-    // defer loading recent jobs to client after mount to avoid hydration mismatch
-    setRecentJobs(loadRecentJobs());
-    if (!jobId) return;
-    const timer = setInterval(async () => {
-      const response = await apiRequest<JobRecord>({ path: `/jobs/${jobId}` });
-      if (response.ok && response.data) {
-        setJob(response.data);
-        if (["DONE", "ERROR"].includes(response.data.status)) {
-          clearInterval(timer);
-          updateRecentJobs(response.data);
-        }
-      }
-    }, POLL_INTERVAL_MS);
-    return () => clearInterval(timer);
-  }, [jobId]);
 
   const updateRecentJobs = useCallback((data: JobRecord) => {
     const record: RecentJob = {
@@ -95,6 +76,68 @@ const allowed = useMemo(() => new Set(["bsl", "xml", "html", "htm", "txt"]), [])
       return merged;
     });
   }, []);
+
+  useEffect(() => {
+    if (fileInputRef.current) {
+      fileInputRef.current.setAttribute("webkitdirectory", "");
+      fileInputRef.current.setAttribute("directory", "");
+    }
+    setRecentJobs(loadRecentJobs());
+  }, []);
+
+  useEffect(() => {
+    if (!jobId) return undefined;
+    if (job?.status && ["DONE", "ERROR"].includes(job.status)) {
+      return undefined;
+    }
+    const timer = setInterval(async () => {
+      const response = await apiRequest<JobRecord>({ path: `/jobs/${jobId}` });
+      if (response.ok && response.data) {
+        setJob(response.data);
+        if (["DONE", "ERROR"].includes(response.data.status)) {
+          updateRecentJobs(response.data);
+        }
+      }
+    }, POLL_INTERVAL_MS);
+    return () => clearInterval(timer);
+  }, [jobId, job?.status, updateRecentJobs]);
+
+  const handleRetry = useCallback(
+    (targetJobId: string) => {
+      if (!targetJobId) {
+        setToast({ message: "Job id is required to trigger retry.", variant: "error" });
+        return;
+      }
+      setRetryingJobId(targetJobId);
+      apiRequest<JobRecord>({ path: `/jobs/${targetJobId}/retry`, method: "POST" })
+        .then((response) => {
+          if (!response.ok || !response.data) {
+            setToast({ message: response.error ?? "Retry request failed.", variant: "error" });
+            return;
+          }
+          setJobId(targetJobId);
+          setJob(response.data);
+          updateRecentJobs(response.data);
+          setToast({ message: "Retry initiated.", variant: "success" });
+        })
+        .catch((error) => {
+          console.error(
+            JSON.stringify({
+              ts: new Date().toISOString(),
+              level: "error",
+              event: "retry_request_failed",
+              job_id: targetJobId,
+              message: error instanceof Error ? error.message : String(error),
+            }),
+          );
+          setToast({ message: "Retry request failed.", variant: "error" });
+        })
+        .finally(() => {
+          setRetryingJobId(null);
+        });
+    },
+    [setToast, setJobId, setJob, updateRecentJobs],
+  );
 
   useEffect(() => {
     if (job && ["DONE", "ERROR"].includes(job.status)) {
@@ -349,8 +392,26 @@ const allowed = useMemo(() => new Set(["bsl", "xml", "html", "htm", "txt"]), [])
                 Job ID: <code>{jobId}</code>
               </p>
             </div>
-            <StatusPill status={job?.status ?? "PENDING"} />
+            <div className="inline" style={{ alignItems: "center", gap: "0.5rem" }}>
+              <StatusPill status={job?.status ?? "PENDING"} />
+              {job?.status === "ERROR" && (
+                <Button
+                  variant="secondary"
+                  data-testid="retry-job-button"
+                  disabled={retryingJobId === job.job_id}
+                  onClick={() => handleRetry(job.job_id)}
+                >
+                  Повторить
+                </Button>
+              )}
+            </div>
           </header>
+          {job?.last_error_phase && job.status === "ERROR" ? (
+            <div className="text-muted">Последний сбой на фазе: {job.last_error_phase}</div>
+          ) : null}
+          {job?.retry_count && job.retry_count > 0 ? (
+            <div className="text-muted">Попыток перезапуска: {job.retry_count}</div>
+          ) : null}
 
           {filesCounts && (
             <div className="stack" data-testid="indexing-files">
@@ -487,6 +548,16 @@ const allowed = useMemo(() => new Set(["bsl", "xml", "html", "htm", "txt"]), [])
                   <Button variant="secondary" onClick={() => onSelectJob(item.jobId)}>
                     Статус
                   </Button>
+                  {item.status === "ERROR" && (
+                    <Button
+                      variant="secondary"
+                      data-testid="retry-job-button-recent"
+                      disabled={retryingJobId === item.jobId}
+                      onClick={() => handleRetry(item.jobId)}
+                    >
+                      Повторить
+                    </Button>
+                  )}
                 </div>
               </li>
             ))}

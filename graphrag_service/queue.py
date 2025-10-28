@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import asdict, dataclass
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Set
 
 from redis import Redis
 
@@ -40,3 +40,18 @@ class JobQueue:
             return None
         _, payload = item
         return IndexJob.from_json(payload)
+
+    def list_job_ids(self) -> Set[str]:
+        entries = self.redis.lrange(self.queue_name, 0, -1)
+        job_ids: Set[str] = set()
+        for payload in entries:
+            if isinstance(payload, bytes):
+                payload_str = payload.decode("utf-8")
+            else:
+                payload_str = str(payload)
+            try:
+                job = IndexJob.from_json(payload_str)
+            except json.JSONDecodeError:
+                continue
+            job_ids.add(job.job_id)
+        return job_ids

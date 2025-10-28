@@ -4,7 +4,7 @@ import json
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from enum import Enum
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Iterator, List, Optional
 
 from redis import Redis
 
@@ -54,6 +54,8 @@ class JobState:
     updated_at: datetime = field(default_factory=datetime.utcnow)
     started_at: Optional[datetime] = None
     finished_at: Optional[datetime] = None
+    retry_count: int = 0
+    last_error_phase: Optional[str] = None
 
     def to_primitive(self) -> Dict[str, Any]:
         payload = asdict(self)
@@ -64,6 +66,8 @@ class JobState:
         payload["finished_at"] = self.finished_at.isoformat() if self.finished_at else None
         payload["errors"] = [asdict(err) for err in self.errors]
         payload["stats"] = asdict(self.stats)
+        payload["retry_count"] = self.retry_count
+        payload["last_error_phase"] = self.last_error_phase
         return payload
 
     @staticmethod
@@ -84,6 +88,8 @@ class JobState:
             updated_at=parse_dt(payload.get("updated_at")) or datetime.utcnow(),
             started_at=parse_dt(payload.get("started_at")),
             finished_at=parse_dt(payload.get("finished_at")),
+            retry_count=payload.get("retry_count", 0),
+            last_error_phase=payload.get("last_error_phase"),
         )
 
 
@@ -122,6 +128,15 @@ class JobStore:
 
         self.save(state)
         return state
+
+    def iter_states(self) -> Iterator[JobState]:
+        pattern = f"{self.prefix}:*"
+        for key in self.redis.scan_iter(match=pattern):
+            raw = self.redis.get(key)
+            if not raw:
+                continue
+            data = json.loads(raw)
+            yield JobState.from_primitive(data)
 
 
 def get_settings_redis() -> Redis:

@@ -9,7 +9,7 @@ import { Toast } from "@/components/ui/Toast";
 import { apiRequest } from "@/lib/api";
 
 type Citation = {
-  node_id?: number | null;
+  node_id?: string | null;
   label?: string | null;
   title: string;
   snippet: string;
@@ -19,15 +19,15 @@ type Citation = {
 };
 
 type GraphNode = {
-  id: number;
+  id: string;
   label: string;
   title?: string | null;
 };
 
 type GraphEdge = {
   type: string;
-  source: number;
-  target: number;
+  source: string;
+  target: string;
 };
 
 type GraphPath = {

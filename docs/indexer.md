@@ -2,6 +2,12 @@
 
 ---
 
+## Управляемый retry задач
+
+- Эндпоинт `POST /jobs/{job_id}/retry` требует статус `ERROR`, проверяет наличие входных данных `<workspace>/<collection>/<job_id>/raw` и повторно ставит задачу в очередь без изменения `job_id`. После валидации статус переводится в `PENDING`, счётчик `retry_count` увеличивается, события фиксируются в логах (`event=job_retry_*`).
+- UI отображает кнопку «Повторить» для задач с ошибкой и сохраняет текст последней ошибки вместе с фазой (`last_error_phase`), чтобы операторы видели причину сбоя до повторного запуска.
+- Конфиг дополнен параметрами `neo4j_node_batch_size`, `neo4j_edge_batch_size`, а также управляемыми повторами `neo4j_write_max_attempts`, `neo4j_write_backoff_sec` (по умолчанию повторы выключены). Это единый батчовый режим записи графа с `elementId()` и телеметрией `neo4j_nodes_batch_*`/`neo4j_edges_batch_*`.
+
 > Update: `path` is now required on every node, always matching `document.rel_path`. `TextUnit` and `Chunk` records carry the same `path` plus an optional `locator` that identifies the intra-file anchor (routine signature, etc.). Any previous use of `path` as a locator should be migrated to the dedicated `locator` field.
 
 # `schema_1c_v2.json`

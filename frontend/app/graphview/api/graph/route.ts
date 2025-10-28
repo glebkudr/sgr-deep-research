@@ -217,7 +217,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
       "MATCH (s)-[r]->(t)",
       "WITH collect(s) + collect(t) AS nds",
       "UNWIND nds AS n",
-      "RETURN DISTINCT id(n) AS id, labels(n) AS labels",
+      "RETURN DISTINCT elementId(n) AS id, labels(n) AS labels",
     ].join("\n");
     const relationshipQuery = [
       "WITH $collection AS collection, $rels AS rels, $limit AS limit",
@@ -225,7 +225,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
       "WHERE r.collection = collection AND (size(rels) = 0 OR type(r) IN rels)",
       "WITH r LIMIT limit",
       "MATCH (s)-[r]->(t)",
-      "RETURN id(s) AS source, id(t) AS target, type(r) AS type",
+      "RETURN elementId(s) AS source, elementId(t) AS target, type(r) AS type",
     ].join("\n");
     // Note: resultRowsCypher must return s.path/t.path in BOTH branches to populate node.path in server mode.
     // Do not coalesce path; undefined/null from Neo4j is acceptable per strict policy.
@@ -235,8 +235,8 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
           "WHERE r.collection = $collection AND type(r) IN $rels",
           "WITH r LIMIT $limit",
           "MATCH (s)-[r]->(t)",
-          "RETURN toString(id(s)) AS sid, labels(s)[0] AS slabel, coalesce(s.name,s.title,s.qualified_name) AS sTitle, s.path AS sPath,",
-          "       toString(id(t)) AS tid, labels(t)[0] AS tlabel, coalesce(t.name,t.title,t.qualified_name) AS tTitle, t.path AS tPath,",
+          "RETURN elementId(s) AS sid, labels(s)[0] AS slabel, coalesce(s.name,s.title,s.qualified_name) AS sTitle, s.path AS sPath,",
+          "       elementId(t) AS tid, labels(t)[0] AS tlabel, coalesce(t.name,t.title,t.qualified_name) AS tTitle, t.path AS tPath,",
           "       type(r) AS rel",
         ]
       : [
@@ -244,8 +244,8 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
           "WHERE r.collection = $collection",
           "WITH r LIMIT $limit",
           "MATCH (s)-[r]->(t)",
-          "RETURN toString(id(s)) AS sid, labels(s)[0] AS slabel, coalesce(s.name,s.title,s.qualified_name) AS sTitle, s.path AS sPath,",
-          "       toString(id(t)) AS tid, labels(t)[0] AS tlabel, coalesce(t.name,t.title,t.qualified_name) AS tTitle, t.path AS tPath,",
+          "RETURN elementId(s) AS sid, labels(s)[0] AS slabel, coalesce(s.name,s.title,s.qualified_name) AS sTitle, s.path AS sPath,",
+          "       elementId(t) AS tid, labels(t)[0] AS tlabel, coalesce(t.name,t.title,t.qualified_name) AS tTitle, t.path AS tPath,",
           "       type(r) AS rel",
         ]).join("\n");
 
@@ -547,8 +547,8 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
         "WHERE r.collection = $collection AND type(r) IN $rels",
         "WITH r LIMIT $limit",
         "MATCH (s)-[r]->(t)",
-        "RETURN toString(id(s)) AS sid, labels(s)[0] AS slabel, coalesce(s.name,s.title,s.qualified_name) AS sTitle, s.path AS sPath,",
-        "       toString(id(t)) AS tid, labels(t)[0] AS tlabel, coalesce(t.name,t.title,t.qualified_name) AS tTitle, t.path AS tPath,",
+        "RETURN elementId(s) AS sid, labels(s)[0] AS slabel, coalesce(s.name,s.title,s.qualified_name) AS sTitle, s.path AS sPath,",
+        "       elementId(t) AS tid, labels(t)[0] AS tlabel, coalesce(t.name,t.title,t.qualified_name) AS tTitle, t.path AS tPath,",
         "       type(r) AS rel",
       ].join("\n")
     : [
@@ -556,8 +556,8 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
         "WHERE r.collection = $collection",
         "WITH r LIMIT $limit",
         "MATCH (s)-[r]->(t)",
-        "RETURN toString(id(s)) AS sid, labels(s)[0] AS slabel, coalesce(s.name,s.title,s.qualified_name) AS sTitle, s.path AS sPath,",
-        "       toString(id(t)) AS tid, labels(t)[0] AS tlabel, coalesce(t.name,t.title,t.qualified_name) AS tTitle, t.path AS tPath,",
+        "RETURN elementId(s) AS sid, labels(s)[0] AS slabel, coalesce(s.name,s.title,s.qualified_name) AS sTitle, s.path AS sPath,",
+        "       elementId(t) AS tid, labels(t)[0] AS tlabel, coalesce(t.name,t.title,t.qualified_name) AS tTitle, t.path AS tPath,",
         "       type(r) AS rel",
       ].join("\n");
 

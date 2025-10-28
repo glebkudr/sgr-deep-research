@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Tuple
+from typing import Callable, Dict, List, Tuple
 
 import numpy as np
 
@@ -36,6 +36,7 @@ class IndexingPipeline:
         job_state.status = JobStatus.RUNNING
         job_state.started_at = datetime.utcnow()
         job_state.errors = []
+        job_state.last_error_phase = None
         preserved_stats = job_state.stats if job_state.stats else JobStats()
         job_state.stats = JobStats(
             total_files=preserved_stats.total_files,
@@ -44,9 +45,43 @@ class IndexingPipeline:
             session_total_files=preserved_stats.session_total_files,
         )
         self.job_store.save(job_state)
+        if job_state.retry_count > 0:
+            logger.info(
+                "event=indexing_retry_start job_id=%s collection=%s retry_count=%d",
+                job.job_id,
+                job.collection,
+                job_state.retry_count,
+            )
 
         try:
-            documents = load_documents(Path(job.raw_path))
+            raw_dir = Path(job.raw_path)
+            raw_exists = raw_dir.is_dir()
+            file_count = 0
+            if raw_exists:
+                file_count = sum(1 for entry in raw_dir.rglob("*") if entry.is_file())
+            logger.info(
+                "event=raw_input_check job_id=%s collection=%s path=%s exists=%s files=%d",
+                job.job_id,
+                job.collection,
+                raw_dir,
+                raw_exists,
+                file_count,
+            )
+            if not raw_exists:
+                raise FileNotFoundError(f"Raw input directory not found: {raw_dir}")
+            if file_count == 0:
+                raise RuntimeError(f"Raw input directory {raw_dir} contains no files.")
+
+            job_state.stats.phase = "LOADING"
+            self.job_store.save(job_state)
+            logger.info(
+                "event=phase_set job_id=%s collection=%s phase=%s",
+                job.job_id,
+                job.collection,
+                "LOADING",
+            )
+
+            documents = load_documents(raw_dir)
             logger.info(
                 "event=load_documents_ok job_id=%s collection=%s documents=%d path=%s",
                 job.job_id,
@@ -112,6 +147,18 @@ class IndexingPipeline:
             if job_state.errors:
                 logger.warning("event=job_completed_with_errors job_id=%s collection=%s errors=%d", job.job_id, job.collection, len(job_state.errors))
 
+            job_state.stats.phase = "EXTRACTION"
+            self.job_store.save(job_state)
+            logger.info(
+                "event=phase_set job_id=%s collection=%s phase=%s nodes=%d edges=%d text_units=%d",
+                job.job_id,
+                job.collection,
+                "EXTRACTION",
+                len(nodes_by_key),
+                len(edges_keyed),
+                len(text_units),
+            )
+
             chunks = chunk_text_units(text_units)
             if not chunks:
                 logger.warning("event=no_chunks job_id=%s collection=%s", job.job_id, job.collection)
@@ -156,6 +203,20 @@ class IndexingPipeline:
                 job_state.stats.graph_nodes_total,
                 job_state.stats.graph_edges_total,
             )
+            if job_state.retry_count > 0:
+                logger.info(
+                    "event=graph_write_retry_start job_id=%s collection=%s retry_count=%d",
+                    job.job_id,
+                    job.collection,
+                    job_state.retry_count,
+                )
+            logger.info(
+                "event=graph_write_start job_id=%s collection=%s nodes=%d edges=%d",
+                job.job_id,
+                job.collection,
+                len(nodes_by_key),
+                len(edges_list),
+            )
 
             node_ids = self._write_graph(job_state, nodes_by_key, edges_list)
             # Best-effort progress: mark written equals totals upon completion
@@ -185,6 +246,13 @@ class IndexingPipeline:
             job_state.stats.phase = "VECTOR_INDEX"
             self.job_store.save(job_state)
             logger.info("event=phase_set job_id=%s collection=%s phase=%s", job.job_id, job.collection, "VECTOR_INDEX")
+            logger.info(
+                "event=vector_index_start job_id=%s collection=%s chunks=%d embeddings=%d",
+                job.job_id,
+                job.collection,
+                len(chunks),
+                embeddings.shape[0] if embeddings.size else 0,
+            )
             self._build_vector_index(job.job_id, job.collection, chunks, embeddings, node_ids)
             logger.info("event=vector_index_updated job_id=%s collection=%s", job.job_id, job.collection)
             # Finalizing phase after vector index persisted
@@ -210,6 +278,7 @@ class IndexingPipeline:
             job_state.status = JobStatus.ERROR
             job_state.finished_at = datetime.utcnow()
             job_state.errors.append(JobError(message=str(exc)))
+            job_state.last_error_phase = job_state.stats.phase or "UNKNOWN"
             job_state.stats.duration_sec = (
                 (job_state.finished_at - job_state.started_at).total_seconds() if job_state.started_at else 0.0
             )
@@ -267,13 +336,62 @@ class IndexingPipeline:
         job_state: JobState,
         nodes_by_key: Dict[NodeKey, GraphNode],
         edges: List[GraphEdge],
-    ) -> Dict[NodeKey, int]:
+    ) -> Dict[NodeKey, str]:
         writer = Neo4jGraphWriter()
+        context = {"job_id": job_state.job_id, "collection": job_state.collection}
         try:
-            node_ids = writer.upsert(nodes_by_key.values(), edges)
+            logger.info(
+                "event=neo4j_session_open job_id=%s collection=%s database=%s",
+                job_state.job_id,
+                job_state.collection,
+                writer.database,
+            )
+            def on_nodes_batch(count: int) -> None:
+                job_state.stats.graph_nodes_written = min(
+                    job_state.stats.graph_nodes_total,
+                    job_state.stats.graph_nodes_written + count,
+                )
+                self.job_store.save(job_state)
+                logger.info(
+                    "event=graph_write_progress job_id=%s collection=%s kind=nodes written=%d total=%d batch_count=%d",
+                    job_state.job_id,
+                    job_state.collection,
+                    job_state.stats.graph_nodes_written,
+                    job_state.stats.graph_nodes_total,
+                    count,
+                )
+
+            def on_edges_batch(count: int) -> None:
+                job_state.stats.graph_edges_written = min(
+                    job_state.stats.graph_edges_total,
+                    job_state.stats.graph_edges_written + count,
+                )
+                self.job_store.save(job_state)
+                logger.info(
+                    "event=graph_write_progress job_id=%s collection=%s kind=edges written=%d total=%d batch_count=%d",
+                    job_state.job_id,
+                    job_state.collection,
+                    job_state.stats.graph_edges_written,
+                    job_state.stats.graph_edges_total,
+                    count,
+                )
+
+            node_ids = writer.upsert(
+                nodes_by_key.values(),
+                edges,
+                context=context,
+                on_nodes_batch=on_nodes_batch,
+                on_edges_batch=on_edges_batch,
+            )
             return node_ids
         finally:
             writer.close()
+            logger.info(
+                "event=neo4j_session_closed job_id=%s collection=%s database=%s",
+                job_state.job_id,
+                job_state.collection,
+                writer.database,
+            )
 
     def _build_vector_index(
         self,
@@ -281,7 +399,7 @@ class IndexingPipeline:
         collection: str,
         chunks: List[Chunk],
         embeddings: np.ndarray,
-        node_ids: Dict[NodeKey, int],
+        node_ids: Dict[NodeKey, str],
     ) -> None:
         if embeddings.size == 0 or not chunks:
             return

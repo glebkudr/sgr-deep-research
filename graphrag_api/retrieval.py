@@ -52,7 +52,7 @@ class RetrievalService:
             raise RuntimeError("Vector search returned no candidates.")
 
         chunk_contexts = self._select_chunk_contexts(hits, top_k)
-        seed_ids = [ctx["node_id"] for ctx in chunk_contexts if ctx["node_id"] is not None]
+        seed_ids = [str(ctx["node_id"]) for ctx in chunk_contexts if ctx["node_id"] is not None]
         graph_paths, node_details, cypher_queries = self._expand_graph(seed_ids, max_hops)
         citations = self._build_citations(chunk_contexts, node_details)
 
@@ -83,10 +83,12 @@ class RetrievalService:
         contexts: List[dict] = []
         for hit in hits[:top_k]:
             metadata = hit.metadata or {}
+            node_identifier = metadata.get("node_id")
+            node_id_value = str(node_identifier) if node_identifier is not None else None
             contexts.append(
                 {
                     "chunk_id": metadata.get("chunk_id", hit.chunk_id),
-                    "node_id": metadata.get("node_id"),
+                    "node_id": node_id_value,
                     "path": metadata.get("path"),
                     "locator": metadata.get("locator"),
                     "text": metadata.get("text") or metadata.get("text_snippet", ""),
@@ -98,9 +100,9 @@ class RetrievalService:
 
     def _expand_graph(
         self,
-        seed_ids: List[int],
+        seed_ids: List[str],
         max_hops: int,
-    ) -> Tuple[List[dict], Dict[int, dict], List[str]]:
+    ) -> Tuple[List[dict], Dict[str, dict], List[str]]:
         if not seed_ids or max_hops <= 0:
             nodes = self._fetch_node_details(seed_ids)
             return [], nodes, []
@@ -109,13 +111,13 @@ class RetrievalService:
         limit = self.settings.graph_path_limit
         cypher = (
             "MATCH p=(s)-[r*1..$max_hops]-(t) "
-            "WHERE id(s) IN $seed_ids AND ALL(rel IN r WHERE type(rel) IN $allowed) "
+            "WHERE elementId(s) IN $seed_ids AND ALL(rel IN r WHERE type(rel) IN $allowed) "
             "RETURN DISTINCT p "
             "LIMIT $limit"
         )
 
         paths: List[dict] = []
-        node_ids: set[int] = set(seed_ids)
+        node_ids: set[str] = set(seed_ids)
         with neo4j_session() as session:
             result = session.run(
                 cypher,
@@ -126,10 +128,14 @@ class RetrievalService:
             )
             for record in result:
                 path = record["p"]
-                nodes = [node.id for node in path.nodes]
+                nodes = [node.element_id for node in path.nodes]
                 node_ids.update(nodes)
                 edges = [
-                    {"type": rel.type, "source": rel.start_node.id, "target": rel.end_node.id}
+                    {
+                        "type": rel.type,
+                        "source": rel.start_node.element_id,
+                        "target": rel.end_node.element_id,
+                    }
                     for rel in path.relationships
                 ]
                 paths.append({"node_ids": nodes, "edges": edges})
@@ -151,14 +157,14 @@ class RetrievalService:
         ]
         return graph_paths, node_details, [cypher] if paths else []
 
-    def _fetch_node_details(self, node_ids: Sequence[int]) -> Dict[int, dict]:
+    def _fetch_node_details(self, node_ids: Sequence[str]) -> Dict[str, dict]:
         if not node_ids:
             return {}
-        details: Dict[int, dict] = {}
+        details: Dict[str, dict] = {}
         query = (
             "MATCH (n) "
-            "WHERE id(n) IN $ids "
-            "RETURN id(n) AS id, labels(n) AS labels, "
+            "WHERE elementId(n) IN $ids "
+            "RETURN elementId(n) AS id, labels(n) AS labels, "
             "n.name AS name, n.qualified_name AS qualified_name, n.path AS path, n.type AS type"
         )
         with neo4j_session() as session:
@@ -174,11 +180,12 @@ class RetrievalService:
                 }
         return details
 
-    def _build_citations(self, chunk_contexts: List[dict], node_details: Dict[int, dict]) -> List[dict]:
+    def _build_citations(self, chunk_contexts: List[dict], node_details: Dict[str, dict]) -> List[dict]:
         citations: List[dict] = []
         for context in chunk_contexts:
             node_id = context["node_id"]
-            node_info = node_details.get(node_id) if node_id is not None else None
+            node_key = str(node_id) if node_id is not None else None
+            node_info = node_details.get(node_key) if node_key is not None else None
             locator = context.get("locator")
             if node_info:
                 title_value = node_info.get("title")
@@ -199,7 +206,7 @@ class RetrievalService:
 
             citations.append(
                 {
-                    "node_id": node_id,
+                    "node_id": node_key,
                     "label": node_info["label"] if node_info else None,
                     "title": citation_title,
                     "snippet": context["snippet"],
@@ -213,7 +220,7 @@ class RetrievalService:
     def _render_context(
         self,
         chunk_contexts: List[dict],
-        node_details: Dict[int, dict],
+        node_details: Dict[str, dict],
         graph_paths: List[dict],
     ) -> str:
         lines: List[str] = []

@@ -59,6 +59,8 @@ class JobStateSchema(BaseModel):
     updated_at: datetime
     started_at: Optional[datetime]
     finished_at: Optional[datetime]
+    retry_count: int
+    last_error_phase: Optional[str] = None
 
     @staticmethod
     def from_job_state(state: JobState) -> "JobStateSchema":
@@ -88,11 +90,13 @@ class JobStateSchema(BaseModel):
             updated_at=state.updated_at,
             started_at=state.started_at,
             finished_at=state.finished_at,
+            retry_count=state.retry_count,
+            last_error_phase=state.last_error_phase,
         )
 
 
 class CitationSchema(BaseModel):
-    node_id: Optional[int]
+    node_id: Optional[str]
     label: Optional[str]
     title: str
     snippet: str
@@ -101,15 +105,15 @@ class CitationSchema(BaseModel):
 
 
 class GraphNodeSchema(BaseModel):
-    id: int
+    id: str
     label: str
     title: Optional[str] = None
 
 
 class GraphEdgeSchema(BaseModel):
     type: str
-    source: int
-    target: int
+    source: str
+    target: str
 
 
 class GraphPathSchema(BaseModel):

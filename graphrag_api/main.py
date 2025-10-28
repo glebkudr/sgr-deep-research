@@ -15,7 +15,7 @@ from fastapi.responses import JSONResponse
 
 from graphrag_indexer.loader import ALLOWED_EXTENSIONS
 from graphrag_service.config import get_settings
-from graphrag_service.jobs import JobState
+from graphrag_service.jobs import JobState, JobStatus
 from graphrag_service.queue import IndexJob
 
 from .auth import require_token
@@ -371,6 +371,97 @@ def create_app() -> FastAPI:
         state = job_store.get(job_id)
         if not state:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job not found.")
+        return JobStateSchema.from_job_state(state)
+
+    @app.post("/jobs/{job_id}/retry", response_model=JobStateSchema, tags=["indexing"])
+    async def job_retry(
+        job_id: str,
+        _: dict = Depends(require_token),
+        job_store=Depends(get_job_store),
+        job_queue=Depends(get_job_queue),
+    ) -> JobStateSchema:
+        logger.info("event=job_retry_request job_id=%s", job_id)
+        state = job_store.get(job_id)
+        if not state:
+            logger.error("event=job_retry_not_found job_id=%s", job_id)
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job not found.")
+        if state.status != JobStatus.ERROR:
+            logger.error(
+                "event=job_retry_invalid_status job_id=%s status=%s",
+                job_id,
+                state.status.value,
+            )
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Retry is allowed only for jobs in ERROR status.",
+            )
+        if not state.collection:
+            logger.error("event=job_retry_missing_collection job_id=%s", job_id)
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Job collection is missing; cannot retry.",
+            )
+
+        raw_path = Path(settings.workspace_dir) / state.collection / job_id / "raw"
+        if not raw_path.is_dir():
+            logger.error(
+                "event=job_retry_missing_raw_path job_id=%s collection=%s path=%s",
+                job_id,
+                state.collection,
+                raw_path,
+            )
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Raw input directory required for retry is missing.",
+            )
+        try:
+            has_payload = False
+            for entry in raw_path.rglob("*"):
+                if entry.is_file():
+                    has_payload = True
+                    break
+        except OSError as exc:
+            logger.error(
+                "event=job_retry_raw_path_unreadable job_id=%s collection=%s path=%s error=%s",
+                job_id,
+                state.collection,
+                raw_path,
+                exc,
+            )
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Raw input directory is not accessible for retry.",
+            ) from exc
+        if not has_payload:
+            logger.error(
+                "event=job_retry_raw_path_empty job_id=%s collection=%s path=%s",
+                job_id,
+                state.collection,
+                raw_path,
+            )
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Raw input directory is empty; retry aborted.",
+            )
+
+        state.status = JobStatus.PENDING
+        state.started_at = None
+        state.finished_at = None
+        state.last_error_phase = None
+        state.stats.phase = ""
+        state.stats.graph_nodes_written = 0
+        state.stats.graph_edges_written = 0
+        state.retry_count += 1
+        job_store.save(state)
+
+        job_queue.enqueue(IndexJob(job_id=job_id, collection=state.collection, raw_path=str(raw_path)))
+        logger.info(
+            "event=job_retry_enqueued job_id=%s collection=%s retry_count=%d raw_path=%s",
+            job_id,
+            state.collection,
+            state.retry_count,
+            raw_path,
+        )
         return JobStateSchema.from_job_state(state)
 
     @app.post("/qa", response_model=QAResponse, tags=["qa"])

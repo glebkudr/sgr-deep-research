@@ -21,6 +21,10 @@ class Settings(BaseSettings):
     neo4j_database: str = "neo4j"
     neo4j_heap_size: str | None = None
     neo4j_pagecache_size: str | None = None
+    neo4j_node_batch_size: int = 200
+    neo4j_edge_batch_size: int = 400
+    neo4j_write_max_attempts: int = 0
+    neo4j_write_backoff_sec: float = 1.0
 
     redis_url: str = "redis://localhost:6379/0"
 
@@ -98,6 +102,21 @@ class Settings(BaseSettings):
         "PART_OF_CHUNK",
     ]
     graph_path_limit: int = 25
+
+    def model_post_init(self, _: object) -> None:
+        numeric_checks = (
+            ("neo4j_node_batch_size", self.neo4j_node_batch_size),
+            ("neo4j_edge_batch_size", self.neo4j_edge_batch_size),
+        )
+        for field_name, value in numeric_checks:
+            if value <= 0:
+                raise ValueError(f"{field_name} must be > 0, got {value}")
+        if self.neo4j_write_max_attempts < 0:
+            raise ValueError(f"neo4j_write_max_attempts must be >= 0, got {self.neo4j_write_max_attempts}")
+        if self.neo4j_write_max_attempts > 0 and self.neo4j_write_backoff_sec <= 0:
+            raise ValueError(
+                f"neo4j_write_backoff_sec must be > 0 when retries are enabled, got {self.neo4j_write_backoff_sec}"
+            )
 
 @lru_cache
 def get_settings() -> Settings:
